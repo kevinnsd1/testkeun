@@ -1,0 +1,38 @@
+DROP TABLE IF EXISTS public."FLK_REVOFIF";
+
+CREATE TABLE public."FLK_REVOFIF" (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    timestamp TEXT,
+    email_aktif TEXT,
+    sumber_informasi TEXT,
+    nama_lengkap TEXT,
+    tanggal_lahir TEXT,
+    no_wa TEXT,
+    no_hp TEXT,
+    jenis_kelamin TEXT,
+    pengalaman_kerja_terakhir TEXT,
+    durasi_pengalaman_kerja TEXT,
+    minat_posisi_1 TEXT,
+    minat_posisi_2 TEXT,
+    minat_posisi_3 TEXT,
+    pendidikan_terakhir TEXT,
+    nama_sekolah TEXT,
+    jurusan TEXT,
+    kepemilikan_kendaraan TEXT,
+    kepemilikan_sim TEXT,
+    alamat_domisili TEXT,
+    kecamatan TEXT,
+    provinsi_dom TEXT,
+    provinsi_minat_penempatan TEXT,
+    kota_minat_penempatan TEXT,
+    upload_cv TEXT,
+    nama_referensi TEXT,
+    tempat_informasi TEXT,
+    minat_industri TEXT,
+    periode TEXT,
+    cycle_hired TEXT,
+    usia INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public."FLK_REVOFIF" DISABLE ROW LEVEL SECURITY;

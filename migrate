@@ -1,0 +1,116 @@
+require("dotenv").config();
+const { createClient } = require("@supabase/supabase-js");
+const Papa = require("papaparse");
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const sheetId = process.env.SHEET_ID;
+
+if (!supabaseUrl || !supabaseKey || !sheetId) {
+  console.error("Missing environment variables. Check your .env file.");
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Public CSV Export URL for the Google Sheet
+const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+
+function parseDate(dateStr) {
+  if (!dateStr) return null;
+  return dateStr.trim() !== "" ? dateStr.trim() : null;
+}
+
+function parseInteger(intStr) {
+  if (!intStr) return null;
+  const parsed = parseInt(intStr, 10);
+  return isNaN(parsed) ? null : parsed;
+}
+
+async function migrate() {
+  console.log("Fetching CSV from Google Sheets...");
+
+  try {
+    const res = await fetch(csvUrl);
+    if (!res.ok) throw new Error(`Failed to fetch sheet: ${res.statusText}`);
+
+    const csvText = await res.text();
+    console.log("Parsing CSV data...");
+
+    Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const rows = results.data;
+        console.log(`Found ${rows.length} rows. Starting migration...`);
+
+        const supabaseData = rows.map((row) => ({
+          timestamp: row["TIMESTAMP"] ? new Date(row["TIMESTAMP"]).toISOString() : null,
+          email: row["EMAIL AKTIF"] || null,
+          sumber_informasi: row["SUMBER INFORMASI LOWONGAN"] || null,
+          nama_lengkap: row["NAMA LENGKAP"] || null,
+          tanggal_lahir: parseDate(row["TANGGAL LAHIR"]),
+          no_wa: row["NOMOR WA AKTIF"] || null,
+          no_hp: row["NOMOR HP AKTIF"] || null,
+          jenis_kelamin: row["JENIS KELAMIN"] || null,
+          pengalaman_kerja_terakhir: row["PENGALAMAN KERJA TERAKHIR"] || null,
+          durasi_pengalaman_kerja: row["DURASI PENGALAMAN KERJA"] || null,
+          minat_posisi_1: row["MINAT POSISI KERJA PERTAMA"] || null,
+          minat_posisi_2: row["MINAT POSISI KERJA KEDUA"] || null,
+          minat_posisi_3: row["MINAT POSISI KERJA KETIGA"] || null,
+          pendidikan_terakhir: row["PENDIDIKAN TERAKHIR"] || null,
+          nama_sekolah: row["NAMA SEKOLAH / NAMA UNIVERITAS"] || null,
+          jurusan: row["JURUSAN"] || null,
+          kepemilikan_kendaraan: row["KEPEMILIKAN KENDARAAN"] || null,
+          kepemilikan_sim: row["KEPEMILIKAN SIM AKTIF"] || null,
+          alamat_domisili: row["ALAMAT DOMISILI"] || null,
+          kecamatan: row["KECAMATAN"] || null,
+          provinsi_dom: row["Provinsi Dom"] || null,
+          provinsi_minat_penempatan: row["PROVINSI MINAT PENEMPATAN"] || null,
+          kota_minat_penempatan: row["KOTA MINAT PENEMPATAN"] || null,
+          upload_cv: row["UPLOAD CV"] || null,
+          nama_referensi: row["NAMA REFERENSI"] || null,
+          tempat_informasi: row["TEMPAT INFORMASI"] || null,
+          periode: row["Periode"] || null,
+          cycle_hired: row["CYCLE HIRED"] || null,
+          usia: parseInteger(row["USIA"]),
+          hasil_screening: row["HASIL SCREENING"] || null,
+          pic_screening: row["PIC SCREENING"] || null,
+          keterangan: row["KETERANGAN"] || null,
+        }));
+
+        const BATCH_SIZE = 500;
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (let i = 0; i < supabaseData.length; i += BATCH_SIZE) {
+          const batch = supabaseData.slice(i, i + BATCH_SIZE);
+
+          const { error } = await supabase.from('FLK_HC').upsert(batch, { onConflict: 'timestamp' });
+
+          if (error) {
+            console.error(`Error inserting batch ${i} to ${i + BATCH_SIZE}:`, error.message);
+            errorCount += batch.length;
+          } else {
+            successCount += batch.length;
+            console.log(`Inserted ${successCount} / ${supabaseData.length} rows...`);
+          }
+        }
+
+        console.log("===================================");
+        console.log(`Migration Complete!`);
+        console.log(`Total Success: ${successCount}`);
+        console.log(`Total Error: ${errorCount}`);
+        console.log("===================================");
+      },
+      error: (error) => {
+        console.error("Error parsing CSV:", error);
+      }
+    });
+
+  } catch (error) {
+    console.error("Fatal Error:", error.message);
+  }
+}
+
+migrate();

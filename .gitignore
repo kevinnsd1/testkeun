@@ -1,0 +1,35 @@
+# Environment variables - JANGAN pernah push ke GitHub!
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# Next.js build output
+.next/
+out/
+build/
+
+# Next.js cache
+**/.next/
+
+# Vercel
+.vercel
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Scratch / temp files
+scratch/
+**/scratch/

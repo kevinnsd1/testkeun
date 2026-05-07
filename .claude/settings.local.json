@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "PowerShell(Get-ChildItem \"D:\\\\Supabase-Migrasi data\" | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object Name, PSIsContainer)",
+      "PowerShell(dir \"D:\\\\Supabase-Migrasi data\\\\dashboard-app\" -Recurse | Where-Object { !$_.PSIsContainer } | Select-Object FullName)",
+      "PowerShell(dir \"D:\\\\Supabase-Migrasi data\\\\dashboard-app\\\\src\" -Recurse | Where-Object { !$_.PSIsContainer -and $_.Extension -in @\\('.tsx','.ts','.css','.html'\\) } | Select-Object FullName)"
+    ]
+  }
+}

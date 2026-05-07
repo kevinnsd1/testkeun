@@ -1,0 +1,91 @@
+// Ganti nilai-nilai di bawah ini dengan kredensial Supabase Anda
+const SUPABASE_URL = 'https://drmzelmavoghqzfxlece.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_qB9Zn4KDYoSHg1f-GFvxNA_6g-97a6z';
+const TABLE_NAME = 'FLK_HC';
+
+/**
+ * Fungsi ini akan dijalankan otomatis saat ada data baru disubmit (via Google Form)
+ * atau saat baris ditambahkan.
+ */
+function onFormSubmit(e) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    
+    // Ambil seluruh data (dari Kolom 1 sampai akhir) pada baris yang sedang diedit/disubmit
+    let rowValues = [];
+    if (e && e.range) {
+      const editedRow = e.range.getRow();
+      const lastCol = sheet.getLastColumn();
+      rowValues = sheet.getRange(editedRow, 1, 1, lastCol).getValues()[0];
+    } else {
+      const lastRow = sheet.getLastRow();
+      const lastCol = sheet.getLastColumn();
+      rowValues = sheet.getRange(lastRow, 1, 1, lastCol).getValues()[0];
+    }
+
+    // Pemetaan data dari urutan kolom Google Sheet ke kolom Supabase (FLK_HC)
+    // Asumsi urutan kolom persis seperti file CSV sebelumnya (Kolom 1 = index 0)
+    
+    const parseDate = (val) => val && val.toString().trim() !== "" ? new Date(val).toISOString() : null;
+    const parseIntSafe = (val) => {
+      const p = parseInt(val, 10);
+      return isNaN(p) ? null : p;
+    };
+
+    // PENTING: Index array di bawah ini (0, 1, 2, dst) mewakili urutan kolom (A, B, C, dst)
+    const payload = {
+      timestamp: parseDate(rowValues[0]),                 // Col A: TIMESTAMP
+      email: rowValues[1] || null,                        // Col B: EMAIL AKTIF
+      sumber_informasi: rowValues[2] || null,             // Col C: SUMBER INFORMASI LOWONGAN
+      nama_lengkap: rowValues[3] || null,                 // Col D: NAMA LENGKAP
+      tanggal_lahir: parseDate(rowValues[4]),             // Col E: TANGGAL LAHIR
+      no_wa: rowValues[5] ? rowValues[5].toString() : null, // Col F: NOMOR WA AKTIF
+      no_hp: rowValues[6] ? rowValues[6].toString() : null, // Col G: NOMOR HP AKTIF
+      jenis_kelamin: rowValues[7] || null,                // Col H: JENIS KELAMIN
+      pengalaman_kerja_terakhir: rowValues[8] || null,    // Col I: PENGALAMAN KERJA TERAKHIR
+      durasi_pengalaman_kerja: rowValues[9] || null,      // Col J: DURASI PENGALAMAN KERJA
+      minat_posisi_1: rowValues[10] || null,              // Col K: MINAT POSISI KERJA PERTAMA
+      minat_posisi_2: rowValues[11] || null,              // Col L: MINAT POSISI KERJA KEDUA
+      minat_posisi_3: rowValues[12] || null,              // Col M: MINAT POSISI KERJA KETIGA
+      pendidikan_terakhir: rowValues[13] || null,         // Col N: PENDIDIKAN TERAKHIR
+      nama_sekolah: rowValues[14] || null,                // Col O: NAMA SEKOLAH / NAMA UNIVERITAS
+      jurusan: rowValues[15] || null,                     // Col P: JURUSAN
+      kepemilikan_kendaraan: rowValues[16] || null,       // Col Q: KEPEMILIKAN KENDARAAN
+      kepemilikan_sim: rowValues[17] || null,             // Col R: KEPEMILIKAN SIM AKTIF
+      alamat_domisili: rowValues[18] || null,             // Col S: ALAMAT DOMISILI
+      kecamatan: rowValues[19] || null,                   // Col T: KECAMATAN
+      provinsi_dom: rowValues[20] || null,                // Col U: Provinsi Dom
+      provinsi_minat_penempatan: rowValues[21] || null,   // Col V: PROVINSI MINAT PENEMPATAN
+      kota_minat_penempatan: rowValues[22] || null,       // Col W: KOTA MINAT PENEMPATAN
+      upload_cv: rowValues[23] || null,                   // Col X: UPLOAD CV
+      nama_referensi: rowValues[24] || null,              // Col Y: NAMA REFERENSI
+      tempat_informasi: rowValues[25] || null,            // Col Z: TEMPAT INFORMASI
+      periode: rowValues[26] || null,                     // Col AA: Periode
+      cycle_hired: rowValues[27] || null,                 // Col AB: CYCLE HIRED
+      usia: parseIntSafe(rowValues[28]),                  // Col AC: USIA
+      hasil_screening: rowValues[29] || null,             // Col AD: HASIL SCREENING
+      pic_screening: rowValues[30] || null,               // Col AE: PIC SCREENING
+      keterangan: rowValues[31] || null                   // Col AF: KETERANGAN
+    };
+
+    // Kirim data ke Supabase (REST API) dengan parameter on_conflict untuk Composite Key
+    const url = `${SUPABASE_URL}/rest/v1/${TABLE_NAME}?on_conflict=timestamp,no_wa`;
+    
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'resolution=merge-duplicates' // Wajib untuk upsert
+      },
+      payload: JSON.stringify(payload)
+    };
+
+    const response = UrlFetchApp.fetch(url, options);
+    Logger.log("Berhasil insert ke Supabase. Status: " + response.getResponseCode());
+    
+  } catch (error) {
+    Logger.log("Error: " + error.toString());
+  }
+}
