@@ -210,6 +210,7 @@ const RevofifPage = () => {
     show: boolean;
     message: string;
   } | null>(null);
+  const [showNoSelectionModal, setShowNoSelectionModal] = useState(false);
 
   // --- CHAT FEATURE STATES (PRIVATE) ---
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -568,7 +569,7 @@ const RevofifPage = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       if (currentPage === 1) fetchDashboardData(1, itemsPerPage);
-    }, 60000);
+    }, 300000);
     return () => clearInterval(interval);
   }, [activeTable, itemsPerPage]);
 
@@ -1005,6 +1006,103 @@ const RevofifPage = () => {
     }
   };
 
+  const exportSelectedExcel = async () => {
+    if (selectedIds.size === 0) {
+      setShowNoSelectionModal(true);
+      return;
+    }
+    if (isExporting) return;
+    setIsExporting(true);
+    setExportProgress(0);
+
+    try {
+      // Tentukan kolom ID (id atau ID)
+      const idColumn = data[0]?.ID ? "ID" : "id";
+
+      const { data: exportData, error } = await supabase
+        .from(activeTable)
+        .select("*")
+        .in(idColumn, Array.from(selectedIds) as string[]);
+
+      if (error) throw error;
+
+      if (!exportData || exportData.length === 0) {
+        alert("Data yang dipilih tidak ditemukan di database.");
+        return;
+      }
+
+      const headers = [
+        "No",
+        "Tgl Lamar",
+        "Nama Lengkap",
+        "Email",
+        "No WA",
+        "No HP",
+        "Sumber Informasi",
+        "Tgl Lahir",
+        "Jenis Kelamin",
+        "Pengalaman Kerja",
+        "Durasi Pengalaman",
+        "Minat Posisi",
+        "Provinsi",
+        "Pendidikan",
+        "Sekolah/Kampus",
+        "Hasil Screening",
+        "Screening Time",
+        "Nomor Task",
+        "Link CV",
+      ];
+
+      const worksheetData: any[][] = [headers];
+      exportData.forEach((r, idx) => {
+        worksheetData.push([
+          idx + 1,
+          formatDate(r.timestamp, true),
+          r.nama_lengkap || "-",
+          r.email_aktif || r.email || "-",
+          r.no_wa || "-",
+          r.no_hp || "-",
+          r.sumber_informasi || "-",
+          formatDate(r.tanggal_lahir),
+          r.jenis_kelamin || "-",
+          r.pengalaman_kerja_terakhir || r.pengalaman_kerja || "-",
+          r.durasi_pengalaman_kerja || r.memiliki_pengalaman_kerja || "-",
+          r.minat_posisi_1 || r.minat_pekerjaan || "-",
+          r.provinsi_domisili ||
+            r.provinsi_dom ||
+            r.provinsi_minat_penempatan ||
+            r.minat_penempatan ||
+            "-",
+          r.pendidikan_terakhir || "-",
+          r.nama_sekolah || "-",
+          r.hasil_screening || "-",
+          formatDate(r.screening_time, true),
+          r.nomor_task || "-",
+          (activeTable === "FLK_Nasional"
+            ? r.upload_cv || r.file_url
+            : r.upload_cv) || "-",
+        ]);
+      });
+
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Data Terpilih");
+      worksheet["!cols"] = headers.map((h) => ({
+        wch: Math.min(h.length + 5, 50),
+      }));
+      XLSX.writeFile(
+        workbook,
+        `FLK_Selected_${activeTable}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+    } catch (err) {
+      console.error("Error exporting selected data:", err);
+      alert("Gagal mengekspor data terpilih.");
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+    }
+  };
+
   const updatePelamar = async (id: any, field: string, value: string) => {
     try {
       const updateData: any = { [field]: value };
@@ -1326,6 +1424,21 @@ const RevofifPage = () => {
                 : "Mengekspor..."
               : "Export Excel"}
           </button>
+
+          <button
+            className="btn-secondary"
+            onClick={exportSelectedExcel}
+            disabled={isExporting || loading}
+            style={{
+              background: selectedIds.size > 0 ? "rgba(16, 185, 129, 0.1)" : "rgba(255, 255, 255, 0.05)",
+              borderColor: selectedIds.size > 0 ? "rgba(16, 185, 129, 0.3)" : "var(--border-color)",
+              color: selectedIds.size > 0 ? "#10b981" : "var(--text-muted)",
+            }}
+          >
+            <CheckSquare size={18} />
+            {isExporting ? "Mengekspor..." : `Export Terpilih (${selectedIds.size})`}
+          </button>
+
           <button
             className="btn-primary"
             onClick={() => fetchDashboardData()}
@@ -3516,6 +3629,41 @@ const RevofifPage = () => {
           </div>
         </div>
       )}
+
+      {/* No Selection Modal */}
+      {showNoSelectionModal && (
+        <div
+          className="confirm-modal-overlay"
+          onClick={() => setShowNoSelectionModal(false)}
+        >
+          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="modal-icon-header"
+              style={{ marginBottom: "16px", textAlign: "center" }}
+            >
+              <AlertTriangle size={40} color="#f59e0b" />
+            </div>
+            <h3 style={{ textAlign: "center" }}>Peringatan</h3>
+            <p style={{ textAlign: "center" }}>
+              Tidak ada data yang dipilih. Silakan centang data pada tabel
+              terlebih dahulu untuk mengekspor data tertentu.
+            </p>
+            <div
+              className="confirm-modal-actions"
+              style={{ justifyContent: "center" }}
+            >
+              <button
+                className="btn-confirm-delete"
+                style={{ background: "#f59e0b", borderColor: "#f59e0b" }}
+                onClick={() => setShowNoSelectionModal(false)}
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Floating Chat Widget */}
       <div className={`chat-widget ${isChatOpen ? "open" : "closed"}`}>
