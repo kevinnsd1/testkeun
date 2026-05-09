@@ -184,6 +184,8 @@ const SPECIAL_TABLES = ["FLK_Jateng_CC", "FLK_JATENG-CC", "FLK_Pertanian"];
 
 const RevofifPage = () => {
   const [data, setData] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [globalStats, setGlobalStats] = useState<any>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -347,25 +349,15 @@ const RevofifPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [cvFilter, setCvFilter] = useState<"all" | "with" | "without">("all");
-
-  const hasActiveFilter = useMemo(() => {
-    const entries = Object.entries(filters);
-    const hasMainFilters = entries.some(([key, val]) => {
-      if (key === "showSelectedOnly") return false;
-      if (typeof val === "boolean") return val === true;
-      return val !== "";
-    });
-    return hasMainFilters || cvFilter !== "all" || !!debouncedSearchTerm;
-  }, [filters, cvFilter, debouncedSearchTerm]);
+  const [tableTotal, setTableTotal] = useState(0); // total rows for table pagination
 
   const handleSearch = () => {
     setCurrentPage(1);
-    fetchDashboardData();
   };
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters, debouncedSearchTerm, cvFilter]);
+  }, [filters, debouncedSearchTerm, cvFilter, activeTable]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -374,197 +366,215 @@ const RevofifPage = () => {
     return () => clearTimeout(handler);
   }, [searchTerm]);
 
-  const fetchDashboardData = async () => {
+  // ─── SERVER-SIDE FETCH (data + stats) ───────────────────────────────────────
+  const fetchDashboardData = async (page = 1, perPage = itemsPerPage) => {
     const gen = ++fetchGenRef.current;
     setLoading(true);
+    if (page === 1) {
+      setGlobalStats(null);
+      setTotalRecords(0);
+      setTableTotal(0);
+    }
 
     const targetTable = activeTable;
     const dateCol = getDateColumn(targetTable);
 
     try {
-      console.log(`Fetching ${targetTable} with date column: ${dateCol}`);
-      const from = (currentPage - 1) * itemsPerPage;
-      const to = from + itemsPerPage - 1;
+      // 1. Build base filter query (shared for both count and data)
+      const buildQuery = (
+        select: string,
+        opts?: { count?: "exact" | "planned" | "estimated" },
+      ) => {
+        let q = supabase.from(targetTable).select(select, opts || {});
 
-      let query = supabase.from(targetTable).select("*", { count: "exact" });
+        // Date filter
+        if (filters.startDate) {
+          if (dateCol === "tanggal_daftar") {
+            const start = filters.startDate;
+            const end = filters.endDate || filters.startDate;
+            q = q
+              .gte("tanggal_daftar", `${start}T00:00:00Z`)
+              .lte("tanggal_daftar", `${end}T23:59:59Z`);
+          } else {
+            const [y, m] = filters.startDate.split("-");
+            const monthNum = parseInt(m, 10).toString();
+            q = q.or(
+              `${dateCol}.ilike.${monthNum}/%/${y},${dateCol}.ilike.${y}-${m}-%`,
+            );
+          }
+        }
 
-      // [INTEGRASI SEARCH]
-      if (debouncedSearchTerm) {
-        const isSpecialTable = SPECIAL_TABLES.includes(targetTable);
-        const searchColumn = isSpecialTable
-          ? "minat_pekerjaan"
-          : "minat_posisi_1";
-        const formattedSearch = debouncedSearchTerm
-          .trim()
-          .split(/\s+/)
-          .map((t) => `'${t}:*'`)
-          .join(" | ");
-        query = query.textSearch(searchColumn, formattedSearch);
-      }
+        // Search (text search on minat_posisi_1)
+        if (debouncedSearchTerm.trim()) {
+          const isSpecialTable = SPECIAL_TABLES.includes(targetTable);
+          const searchColumn = isSpecialTable
+            ? "minat_pekerjaan"
+            : "minat_posisi_1";
+          const formattedSearch = debouncedSearchTerm
+            .trim()
+            .split(/\s+/)
+            .map((t) => `'${t}:*'`)
+            .join(" | ");
+          q = q.textSearch(searchColumn, formattedSearch);
+        }
 
-      // [FILTER TANGGAL]
-      if (filters.startDate) {
-        const start = filters.startDate;
-        const end = filters.endDate || filters.startDate;
-        const lowerCol = dateCol.toLowerCase();
-        
-        if (lowerCol === "tanggal_daftar" || lowerCol === "timestamp" || lowerCol === "created_at") {
-          query = query
-            .gte(dateCol, `${start}T00:00:00Z`)
-            .lte(dateCol, `${end}T23:59:59Z`);
-        } else {
-          const [y, m, d] = start.split("-");
-          const monthNum = parseInt(m, 10).toString();
-          query = query.or(
-            `${dateCol}.ilike.${monthNum}/%/${y},${dateCol}.ilike.${y}-${m}-%`,
+        // Other filters
+        if (filters.provinsi) {
+          q = q.or(
+            `provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`,
           );
         }
-      }
-
-      // [FILTER CV]
-      if (cvFilter !== "all") {
-        if (targetTable === "FLK_Nasional") {
-          if (cvFilter === "with") {
-            query = query.or("upload_cv.not.is.null,file_url.not.is.null");
-          } else {
-            query = query.is("upload_cv", null).is("file_url", null);
-          }
-        } else {
-          if (cvFilter === "with") {
-            query = query.not("upload_cv", "is", null);
-          } else {
-            query = query.is("upload_cv", null);
-          }
+        if (filters.kota) {
+          q = q.or(
+            `kecamatan.eq."${filters.kota}",kecamatan_domisili.eq."${filters.kota}",kota_minat_penempatan.eq."${filters.kota}",minat_kota_penempatan.eq."${filters.kota}"`,
+          );
         }
-      }
+        if (filters.pengalaman) {
+          q = q.or(
+            `durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`,
+          );
+        }
+        if (filters.pendidikan) {
+          q = q.eq("pendidikan_terakhir", filters.pendidikan);
+        }
+        if (filters.jenisKelamin) {
+          q = q.eq("jenis_kelamin", filters.jenisKelamin);
+        }
+        if (filters.minatPosisi) {
+          q = q.or(
+            `minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`,
+          );
+        }
+        if (cvFilter === "with") {
+          if (targetTable === "FLK_Nasional")
+            q = q.or("upload_cv.neq.null,file_url.neq.null");
+          else q = q.not("upload_cv", "is", null);
+        }
+        if (cvFilter === "without") {
+          if (targetTable === "FLK_Nasional")
+            q = q.is("upload_cv", null).is("file_url", null);
+          else q = q.is("upload_cv", null);
+        }
+        if (filters.showSelectedOnly && selectedIds.size > 0) {
+          q = q.in("id", Array.from(selectedIds) as string[]);
+        }
 
-      // [FILTER LAINNYA]
-      if (filters.provinsi) {
-        query = query.or(
-          `provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`,
-        );
-      }
-      if (filters.kota) {
-        query = query.or(
-          `kecamatan.eq."${filters.kota}",kecamatan_domisili.eq."${filters.kota}",kota_minat_penempatan.eq."${filters.kota}",minat_kota_penempatan.eq."${filters.kota}"`,
-        );
-      }
-      if (filters.pengalaman) {
-        query = query.or(
-          `durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`,
-        );
-      }
-      if (filters.pendidikan) {
-        query = query.eq("pendidikan_terakhir", filters.pendidikan);
-      }
-      if (filters.jenisKelamin) {
-        query = query.eq("jenis_kelamin", filters.jenisKelamin);
-      }
-      if (filters.minatPosisi) {
-        query = query.or(
-          `minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`,
-        );
-      }
+        return q;
+      };
 
-      // [SORTING & RANGE]
-      query = query.order("created_at", { ascending: false }).range(from, to);
-
-      // 2. Execute Query
-      const { data: result, error, count } = await query;
+      // 2. Paginated data query
+      const from = (page - 1) * perPage;
+      const to = from + perPage - 1;
+      const {
+        data: result,
+        error,
+        count,
+      } = await buildQuery("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (error) throw error;
       if (gen !== fetchGenRef.current) return;
 
-      // Update Data & Total
       setData(result || []);
-      setTotalRecords(count || 0);
+      setTableTotal(count || 0);
       setLastRefresh(new Date());
 
-      // 3. Parallel Stats Fetch
-      if (currentPage === 1) {
+      // 3. Stats fetch (only on first page load / filter change, not on page change)
+      if (page === 1) {
         const statsPromise = supabase.rpc("get_flk_stats", {
           table_name: targetTable,
         });
-        
-        // Helper untuk buat query statistik dengan filter yang sama
-        const buildStatQuery = () => {
-          let q = supabase.from(targetTable).select('id', { count: 'exact', head: true });
-          if (debouncedSearchTerm) {
-            const isSpecialTable = SPECIAL_TABLES.includes(targetTable);
-            const searchColumn = isSpecialTable ? 'minat_pekerjaan' : 'minat_posisi_1';
-            const formattedSearch = debouncedSearchTerm.trim().split(/\s+/).map(t => `'${t}:*'`).join(' | ');
-            q = q.textSearch(searchColumn, formattedSearch);
-          }
-          if (filters.startDate) {
-            const start = filters.startDate;
-            const end = filters.endDate || filters.startDate;
-            const lowerCol = dateCol.toLowerCase();
-            if (lowerCol === 'tanggal_daftar' || lowerCol === 'timestamp' || lowerCol === 'created_at') {
-              q = q.gte(dateCol, `${start}T00:00:00Z`).lte(dateCol, `${end}T23:59:59Z`);
-            } else {
-              const [y, m] = start.split('-');
-              const monthNum = parseInt(m, 10).toString();
-              q = q.or(`${dateCol}.ilike.${monthNum}/%/${y},${dateCol}.ilike.${y}-${m}-%`);
-            }
-          }
-          if (filters.provinsi) q = q.or(`provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`);
-          if (filters.kota) q = q.or(`kecamatan.eq."${filters.kota}",kecamatan_domisili.eq."${filters.kota}",kota_minat_penempatan.eq."${filters.kota}",minat_kota_penempatan.eq."${filters.kota}"`);
-          if (filters.pendidikan) q = q.eq('pendidikan_terakhir', filters.pendidikan);
-          if (filters.jenisKelamin) q = q.eq('jenis_kelamin', filters.jenisKelamin);
-          return q;
-        };
-
-        const lCountPromise = buildStatQuery().eq('jenis_kelamin', 'L');
-        const pCountPromise = buildStatQuery().eq('jenis_kelamin', 'P');
+        const lCountPromise = supabase
+          .from(targetTable)
+          .select("id", { count: "exact", head: true })
+          .eq("jenis_kelamin", "L");
+        const pCountPromise = supabase
+          .from(targetTable)
+          .select("id", { count: "exact", head: true })
+          .eq("jenis_kelamin", "P");
+        // Total records = unfiltered count
+        const totalCountPromise = supabase
+          .from(targetTable)
+          .select("id", { count: "exact", head: true });
 
         const [
           { data: stats, error: statsError },
           { count: lCount },
           { count: pCount },
-        ] = await Promise.all([statsPromise, lCountPromise, pCountPromise]);
+          { count: totalCount },
+        ] = await Promise.all([
+          statsPromise,
+          lCountPromise,
+          pCountPromise,
+          totalCountPromise,
+        ]);
 
-        if (gen === fetchGenRef.current && !statsError && stats) {
-          if (hasActiveFilter) {
-            stats.male = lCount || 0;
-            stats.female = pCount || 0;
-            stats.total = (lCount || 0) + (pCount || 0);
-          } else {
-            if (lCount !== null) stats.male = lCount;
-            if (pCount !== null) stats.female = pCount;
-          }
+        if (gen !== fetchGenRef.current) return;
+
+        setTotalRecords(totalCount || 0);
+
+        if (!statsError && stats) {
+          if (lCount) stats.male += lCount;
+          if (pCount) stats.female += pCount;
           setGlobalStats(stats);
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       if (gen !== fetchGenRef.current) return;
-      console.error("Error fetching data:", err.message || err, err);
+      console.error("Error fetching data:", err);
     } finally {
       if (gen === fetchGenRef.current) setLoading(false);
     }
   };
 
+  // ─── SEARCH RESULTS kept null (search is now integrated into fetchDashboardData) ─
+  const executeSearch = async (term: string) => {
+    // Search is handled via debouncedSearchTerm inside fetchDashboardData
+    // We just need to reset page to 1 when search term changes
+    setSearchResults(null);
+  };
+
+  // ─── Effects ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    fetchDashboardData();
+    setFilters({
+      startDate: "",
+      endDate: "",
+      provinsi: "",
+      kota: "",
+      pengalaman: "",
+      pendidikan: "",
+      jenisKelamin: "",
+      minatPosisi: "",
+      showSelectedOnly: false,
+    });
+    setCurrentPage(1);
+    setTableTotal(0);
+  }, [activeTable]);
+
+  // Trigger fetch whenever page, filters, search term, or cvFilter changes
+  useEffect(() => {
+    fetchDashboardData(currentPage, itemsPerPage);
   }, [
-    activeTable,
     currentPage,
     itemsPerPage,
     filters,
-    cvFilter,
     debouncedSearchTerm,
+    cvFilter,
+    activeTable,
   ]);
 
+  // Auto-refresh every 60 seconds (always page 1 to pick up new data)
   useEffect(() => {
-    const interval = setInterval(fetchDashboardData, 60000);
+    const interval = setInterval(() => {
+      if (currentPage === 1) fetchDashboardData(1, itemsPerPage);
+    }, 60000);
     return () => clearInterval(interval);
-  }, [
-    activeTable,
-    currentPage,
-    itemsPerPage,
-    filters,
-    cvFilter,
-    debouncedSearchTerm,
-  ]);
+  }, [activeTable, itemsPerPage]);
+
+  useEffect(() => {
+    executeSearch(debouncedSearchTerm);
+  }, [debouncedSearchTerm]);
 
   const localFilterOptions = useMemo(() => {
     const getFilteredFor = (excludedKey: string) => {
@@ -620,7 +630,7 @@ const RevofifPage = () => {
     };
 
     return {
-      periodeKeys: [],
+      periodeKeys: [], // No longer used as a dropdown list
       provinsis: [
         ...new Set(
           getFilteredFor("provinsi")
@@ -729,23 +739,61 @@ const RevofifPage = () => {
     [data, filters, cvFilter, activeTable, selectedIds],
   );
 
-  const total = totalRecords;
-  const tableFilteredData = data;
-  const paginatedData = data;
-  const totalPages = Math.ceil(totalRecords / itemsPerPage);
+  // 2. Table data is now whatever came from the server (no client-side filtering needed)
+  const tableFilteredData = data; // already filtered & paginated server-side
+
+  const hasActiveFilter = useMemo(() => {
+    const entries = Object.entries(filters);
+    const hasMainFilters = entries.some(([key, val]) => {
+      if (typeof val === "boolean") return val === true;
+      return val !== "";
+    });
+    return (
+      hasMainFilters || cvFilter !== "all" || debouncedSearchTerm.trim() !== ""
+    );
+  }, [filters, cvFilter, debouncedSearchTerm]);
+
+  const total = useMemo(() => {
+    const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
+    if (!hasActiveFilter && globalStats && !isSpecialTable)
+      return globalStats.total;
+    return tableTotal; // use server-reported filtered count
+  }, [tableTotal, hasActiveFilter, globalStats, activeTable]);
 
   const genderStats = useMemo(() => {
-    if (globalStats) {
+    const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
+    if (!hasActiveFilter && globalStats && !isSpecialTable) {
       return { male: globalStats.male || 0, female: globalStats.female || 0 };
     }
-    return { male: 0, female: 0 };
-  }, [globalStats]);
+
+    let male = 0;
+    let female = 0;
+
+    dashboardFilteredData.forEach((d) => {
+      const jk = (d.jenis_kelamin || "").toLowerCase();
+      // Use mutually exclusive logic to prevent double counting
+      if (jk === "l" || (jk.includes("laki") && !jk.includes("perempuan"))) {
+        male++;
+      } else if (jk === "p" || jk.includes("perempuan")) {
+        female++;
+      }
+    });
+
+    return { male, female };
+  }, [dashboardFilteredData, hasActiveFilter, globalStats, activeTable]);
 
   const maleCount = genderStats.male;
   const femaleCount = genderStats.female;
 
+  // Server handles pagination — totalPages based on server count
+  const totalPages = Math.ceil(tableTotal / itemsPerPage);
+  const paginatedData = data; // current page data already from server
+
   const insights = useMemo(() => {
-    if (globalStats) {
+    const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
+    // Use global stats if no filters active
+    if (!hasActiveFilter && globalStats && !isSpecialTable) {
+      // Group global top sources/positions to handle casing issues
       const groupGlobalItems = (items: any[]) => {
         const grouped = items.reduce((acc: any, curr: any) => {
           const name = (curr.name || "").toUpperCase().trim();
@@ -762,8 +810,43 @@ const RevofifPage = () => {
         expCount: (globalStats.total || 0) - (globalStats.fresh || 0),
       };
     }
-    return { topSources: [], topPositions: [], freshGrads: 0, expCount: 0 };
-  }, [globalStats]);
+
+    if (dashboardFilteredData.length === 0)
+      return {
+        topSources: [],
+        topPositions: [],
+        freshGrads: 0,
+        expCount: 0,
+      };
+
+    const getTopItems = (arr: string[], limit = 3) => {
+      const counts = arr.reduce((acc: any, curr) => {
+        const normalized = curr.toUpperCase().trim();
+        acc[normalized] = (acc[normalized] || 0) + 1;
+        return acc;
+      }, {});
+      return Object.entries(counts)
+        .sort((a: any, b: any) => b[1] - a[1])
+        .slice(0, limit);
+    };
+
+    const sources = dashboardFilteredData
+      .map((d) => d.sumber_informasi)
+      .filter(Boolean);
+    const topSources = getTopItems(sources);
+
+    const positions = dashboardFilteredData
+      .map((d) => d.minat_posisi_1 || d.minat_pekerjaan)
+      .filter(Boolean);
+    const topPositions = getTopItems(positions);
+
+    const freshGrads = dashboardFilteredData.filter((d) =>
+      d.durasi_pengalaman_kerja?.toLowerCase().includes("fresh"),
+    ).length;
+    const expCount = dashboardFilteredData.length - freshGrads;
+
+    return { topSources, topPositions, freshGrads, expCount };
+  }, [dashboardFilteredData, hasActiveFilter, globalStats]);
 
   const resetFilters = () => {
     setFilters({
@@ -786,54 +869,63 @@ const RevofifPage = () => {
     setExportProgress(0);
 
     try {
-      let exportData: any[] = [];
-      let from = 0;
-      const pageSize = 1000;
+      let exportData: any[];
 
-      while (true) {
-        let query = supabase
-          .from(activeTable)
-          .select("*")
-          .order("created_at", { ascending: false })
-          .range(from, from + pageSize - 1);
+      if (searchResults !== null) {
+        // Search mode: export filtered search results already in memory
+        exportData = tableFilteredData;
+      } else {
+        // Normal mode: paginate all matching rows from Supabase
+        exportData = [];
+        let from = 0;
+        const pageSize = 1000;
 
-        if (debouncedSearchTerm) {
-          const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
-          const searchColumn = isSpecialTable ? 'minat_pekerjaan' : 'minat_posisi_1';
-          const formattedSearch = debouncedSearchTerm.trim().split(/\s+/).map(t => `'${t}:*'`).join(' | ');
-          query = query.textSearch(searchColumn, formattedSearch);
-        }
-        
-        if (filters.startDate) {
-          const dateCol = getDateColumn(activeTable);
-          if (dateCol === 'tanggal_daftar') {
-            query = query.gte('tanggal_daftar', `${filters.startDate}T00:00:00Z`).lte('tanggal_daftar', `${filters.endDate || filters.startDate}T23:59:59Z`);
+        while (true) {
+          let query = supabase
+            .from(activeTable)
+            .select("*")
+            .order("created_at", { ascending: false })
+            .range(from, from + pageSize - 1);
+
+          if (filters.startDate) {
+            // Kita saring secara client-side nanti untuk akurasi 100% dengan string M/D/YYYY
+            // tapi kita tetep bisa tambahin filter server-side kalau kolomnya native timestamp (created_at)
+            query = query.gte("created_at", `${filters.startDate}T00:00:00`);
+            if (filters.endDate) {
+              query = query.lte("created_at", `${filters.endDate}T23:59:59`);
+            }
           }
-        }
-        if (filters.provinsi) {
-          query = query.or(`provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`);
-        }
-        if (filters.pengalaman) {
-          query = query.or(`durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`);
-        }
-        if (filters.pendidikan) {
-          query = query.eq('pendidikan_terakhir', filters.pendidikan);
-        }
-        if (filters.jenisKelamin) {
-          query = query.eq('jenis_kelamin', filters.jenisKelamin);
-        }
-        if (filters.minatPosisi) {
-          query = query.or(`minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`);
-        }
+          if (filters.provinsi) {
+            query = query.or(
+              `provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`,
+            );
+          }
+          if (filters.pengalaman) {
+            query = query.or(
+              `durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`,
+            );
+          }
+          if (filters.pendidikan) {
+            query = query.eq("pendidikan_terakhir", filters.pendidikan);
+          }
+          if (filters.jenisKelamin) {
+            query = query.eq("jenis_kelamin", filters.jenisKelamin);
+          }
+          if (filters.minatPosisi) {
+            query = query.or(
+              `minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`,
+            );
+          }
 
-        const { data: pageData, error } = await query;
-        if (error) throw error;
-        if (!pageData || pageData.length === 0) break;
+          const { data: pageData, error } = await query;
+          if (error) throw error;
+          if (!pageData || pageData.length === 0) break;
 
-        exportData = [...exportData, ...pageData];
-        setExportProgress(exportData.length);
-        if (pageData.length < pageSize) break;
-        from += pageSize;
+          exportData = [...exportData, ...pageData];
+          setExportProgress(exportData.length);
+          if (pageData.length < pageSize) break;
+          from += pageSize;
+        }
       }
 
       if (exportData.length === 0) {
@@ -955,6 +1047,17 @@ const RevofifPage = () => {
                 r.id === id || r.ID === id ? { ...r, [field]: oldValue } : r,
               ),
             );
+            if (searchResults) {
+              setSearchResults((prev) =>
+                prev
+                  ? prev.map((r) =>
+                      r.id === id || r.ID === id
+                        ? { ...r, [field]: oldValue }
+                        : r,
+                    )
+                  : null,
+              );
+            }
             return;
           }
         }
@@ -1057,6 +1160,50 @@ const RevofifPage = () => {
           return row;
         }),
       );
+
+      if (searchResults) {
+        setSearchResults((prev) =>
+          prev
+            ? prev.map((row) => {
+                if ((row.id || row.ID) === id) {
+                  const updatedRow = {
+                    ...row,
+                    [field]: value,
+                    ...(field === "hasil_screening" || field === "nomor_task"
+                      ? { pic: currentUsername }
+                      : {}),
+                    ...(field === "hasil_screening"
+                      ? { screening_time: dbFormatTime }
+                      : {}),
+                  };
+                  if (field === "hasil_screening" || field === "nomor_task") {
+                    let history = [];
+                    try {
+                      history = JSON.parse(row.pic_history || "[]");
+                    } catch (e) {
+                      history = [];
+                    }
+                    const oldValue = row[field] || "-";
+                    const actionLabel =
+                      field === "hasil_screening" ? "Status" : "Task";
+                    const actionDetail = `${actionLabel}: ${oldValue || "-"} → ${value}`;
+
+                    history.unshift({
+                      name: currentUsername,
+                      action: actionDetail,
+                      time: timeStrLocal,
+                    });
+                    updatedRow.pic_history = JSON.stringify(
+                      history.slice(0, 15),
+                    );
+                  }
+                  return updatedRow;
+                }
+                return row;
+              })
+            : null,
+        );
+      }
     } catch (err) {
       console.error("Error updating pelamar:", err);
       alert(
@@ -1089,6 +1236,17 @@ const RevofifPage = () => {
             : row,
         ),
       );
+      if (searchResults) {
+        setSearchResults((prev) =>
+          prev
+            ? prev.map((row) =>
+                row.id === id || row.ID === id
+                  ? { ...row, pic: null, pic_history: null }
+                  : row,
+              )
+            : null,
+        );
+      }
       setDeleteHistoryId(null);
     } catch (err: any) {
       console.error("Error clearing history:", err);
@@ -1170,8 +1328,8 @@ const RevofifPage = () => {
           </button>
           <button
             className="btn-primary"
-            onClick={fetchDashboardData}
-            disabled={loading}
+            onClick={() => fetchDashboardData()}
+            disabled={loading || isSearching}
           >
             <RefreshCcw size={18} className={loading ? "spin" : ""} />
             {loading ? "Loading..." : "Refresh Data"}
@@ -1188,7 +1346,9 @@ const RevofifPage = () => {
               <span className="total-badge">DATABASE</span>
             </div>
             <span className="value">
-              {total.toLocaleString("id-ID")}
+              {hasActiveFilter
+                ? total.toLocaleString("id-ID")
+                : totalRecords.toLocaleString("id-ID")}
             </span>
             <span className="sub-value">
               Dari {totalRecords.toLocaleString("id-ID")} basis data
@@ -1201,7 +1361,7 @@ const RevofifPage = () => {
             <div
               className="fill"
               style={{
-                width: `100%`,
+                width: `${totalRecords > 0 ? Math.round((total / totalRecords) * 100) : 0}%`,
               }}
             />
           </div>
@@ -1212,14 +1372,15 @@ const RevofifPage = () => {
             <div className="stat-header">
               <span className="label">GENDER BREAKDOWN</span>
               <span className="total-badge">
-                {total.toLocaleString("id-ID")} TOTAL
+                {(maleCount + femaleCount).toLocaleString("id-ID")} TOTAL
               </span>
             </div>
-            <div className="gender-values">
-              <span className="gender-v male">
+            <div className="gender-info">
+              <span className="value">
                 {maleCount.toLocaleString("id-ID")} <small>L</small>
               </span>
-              <span className="gender-v female">
+              <span className="divider">/</span>
+              <span className="value">
                 {femaleCount.toLocaleString("id-ID")} <small>P</small>
               </span>
             </div>
@@ -1251,19 +1412,25 @@ const RevofifPage = () => {
             <div className="stat-header">
               <span className="label">EXPERIENCE BREAKDOWN</span>
               <span className="total-badge">
-                {total.toLocaleString("id-ID")} TOTAL
+                {(insights.freshGrads + insights.expCount).toLocaleString(
+                  "id-ID",
+                )}{" "}
+                TOTAL
               </span>
             </div>
-            <div className="gender-values">
-              <span className="gender-v fresh">
-                {insights.freshGrads.toLocaleString("id-ID")} <small>Fresh</small>
+            <div className="gender-info">
+              <span className="value">
+                {insights.freshGrads.toLocaleString("id-ID")}{" "}
+                <small>Fresh</small>
               </span>
-              <span className="gender-v exp">
+              <span className="divider">/</span>
+              <span className="value">
                 {insights.expCount.toLocaleString("id-ID")} <small>Exp</small>
               </span>
             </div>
             <span className="sub-value">
-              {total > 0 ? Math.round((insights.freshGrads / total) * 100) : 0}% Fresh Graduate
+              {total > 0 ? Math.round((insights.freshGrads / total) * 100) : 0}%
+              Fresh Graduate
             </span>
           </div>
           <div className="stat-icon orange">
@@ -1313,6 +1480,9 @@ const RevofifPage = () => {
                     </span>
                   </div>
                 ))}
+              {insights.topSources.length === 0 && (
+                <span className="value">-</span>
+              )}
             </div>
           </div>
           <div className="stat-icon pink">
@@ -1348,6 +1518,9 @@ const RevofifPage = () => {
                     </span>
                   </div>
                 ))}
+              {insights.topPositions.length === 0 && (
+                <span className="value">-</span>
+              )}
             </div>
           </div>
           <div className="stat-icon yellow">
@@ -1412,6 +1585,7 @@ const RevofifPage = () => {
                 <input
                   type="checkbox"
                   className="row-checkbox"
+                  title="Filter: Hanya tampilkan data yang dicentang"
                   checked={!!filters.showSelectedOnly}
                   onChange={() =>
                     setFilters({
@@ -1447,11 +1621,13 @@ const RevofifPage = () => {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {loading || isSearching ? (
               <tr>
-                <td colSpan={16} className="loading-row">Memuat data...</td>
+                <td colSpan={16} className="loading-row">
+                  {isSearching ? "Mencari data..." : "Memuat data..."}
+                </td>
               </tr>
-            ) : data.length === 0 ? (
+            ) : paginatedData.length === 0 ? (
               <tr>
                 <td colSpan={16} className="empty-row">
                   Tidak ada data ditemukan
@@ -1721,7 +1897,7 @@ const RevofifPage = () => {
       </div>
 
       {/* Pagination */}
-      {tableFilteredData.length > 0 && (
+      {tableTotal > 0 && (
         <div className="pagination-container glass-card">
           <div className="pagination-info">
             <div className="per-page-selector">
@@ -1741,25 +1917,25 @@ const RevofifPage = () => {
             </div>
             <div className="pagination-text">
               {(currentPage - 1) * itemsPerPage + 1} -{" "}
-              {Math.min(currentPage * itemsPerPage, totalRecords)}{" "}
-              dari {totalRecords.toLocaleString("id-ID")} data
+              {Math.min(currentPage * itemsPerPage, tableTotal)} dari{" "}
+              {tableTotal.toLocaleString("id-ID")} data
             </div>
           </div>
           <div className="pagination-controls">
             <button
               className="page-btn"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
+              disabled={currentPage === 1 || loading}
             >
               <ChevronLeft size={16} />
             </button>
             <span className="page-current">
-              Halaman {currentPage} dari {totalPages}
+              Halaman {currentPage} dari {totalPages.toLocaleString("id-ID")}
             </span>
             <button
               className="page-btn"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              disabled={currentPage === totalPages || loading}
             >
               <ChevronRight size={16} />
             </button>
