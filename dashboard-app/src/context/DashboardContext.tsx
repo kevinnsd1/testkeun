@@ -1,13 +1,21 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+
+// SETTING AUTO LOGOUT (dalam milidetik)
+// 3 jam = 3 * 60 * 60 * 1000 = 10800000 ms
+// Untuk tes 3 detik, ganti jadi 3000
+const SESSION_TIMEOUT = 3 * 60 * 60 * 1000;
 
 export type FiltersState = {
-  periode: string;
+  startDate: string;
+  endDate: string;
   provinsi: string;
   pengalaman: string;
   pendidikan: string;
   jenisKelamin: string;
   minatPosisi: string;
+  kota: string;
+  showSelectedOnly: boolean;
 };
 
 export type FilterOptionsState = {
@@ -17,6 +25,7 @@ export type FilterOptionsState = {
   pendidikans: string[];
   jenisKelamins: string[];
   minatPosis: string[];
+  kotas: string[];
 };
 
 export type User = {
@@ -38,15 +47,20 @@ type DashboardContextType = {
   user: User | null;
   setUser: (user: User | null) => void;
   logout: () => void;
+  selectedIds: Set<string>;
+  setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
 };
 
 const defaultFilters: FiltersState = {
-  periode: '',
+  startDate: '',
+  endDate: '',
   provinsi: '',
   pengalaman: '',
   pendidikan: '',
   jenisKelamin: '',
   minatPosisi: '',
+  kota: '',
+  showSelectedOnly: false,
 };
 
 const defaultOptions: FilterOptionsState = {
@@ -56,6 +70,7 @@ const defaultOptions: FilterOptionsState = {
   pendidikans: [],
   jenisKelamins: [],
   minatPosis: [],
+  kotas: [],
 };
 
 const DashboardContext = createContext<DashboardContextType>({} as any);
@@ -66,6 +81,40 @@ export const DashboardProvider = ({ children }: { children: React.ReactNode }) =
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [activeTable, setActiveTable] = useState('FLK_REVOFIF');
   const [user, setUser] = useState<User | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetTimer = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (user) {
+      timeoutRef.current = setTimeout(() => {
+        console.log("Session expired, logging out...");
+        logout();
+      }, SESSION_TIMEOUT);
+    }
+  };
+
+  // Monitor user activity for auto-logout
+  useEffect(() => {
+    if (user) {
+      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+
+      const handleActivity = () => resetTimer();
+
+      events.forEach(event => {
+        window.addEventListener(event, handleActivity);
+      });
+
+      resetTimer(); // Start initial timer
+
+      return () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        events.forEach(event => {
+          window.removeEventListener(event, handleActivity);
+        });
+      };
+    }
+  }, [user]);
 
   // Load theme and user from localStorage on mount
   useEffect(() => {
@@ -91,7 +140,24 @@ export const DashboardProvider = ({ children }: { children: React.ReactNode }) =
         console.error("Failed to parse saved user", e);
       }
     }
+
+    const savedSelected = localStorage.getItem('dashboard-selected-ids');
+    if (savedSelected) {
+      try {
+        const parsed = JSON.parse(savedSelected);
+        if (Array.isArray(parsed)) {
+          setSelectedIds(new Set(parsed));
+        }
+      } catch (e) {
+        console.error("Failed to parse saved selected IDs", e);
+      }
+    }
   }, []);
+
+  // Save selectedIds to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('dashboard-selected-ids', JSON.stringify(Array.from(selectedIds)));
+  }, [selectedIds]);
 
   const handleSetUser = (newUser: User | null) => {
     setUser(newUser);
@@ -118,10 +184,10 @@ export const DashboardProvider = ({ children }: { children: React.ReactNode }) =
   };
 
   return (
-    <DashboardContext.Provider value={{ 
-      filters, 
-      setFilters, 
-      filterOptions, 
+    <DashboardContext.Provider value={{
+      filters,
+      setFilters,
+      filterOptions,
       setFilterOptions,
       isDarkMode,
       setIsDarkMode: handleSetTheme,
@@ -129,7 +195,9 @@ export const DashboardProvider = ({ children }: { children: React.ReactNode }) =
       setActiveTable,
       user,
       setUser: handleSetUser,
-      logout
+      logout,
+      selectedIds,
+      setSelectedIds
     }}>
       {children}
     </DashboardContext.Provider>

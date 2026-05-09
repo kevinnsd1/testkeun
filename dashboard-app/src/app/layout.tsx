@@ -6,6 +6,9 @@ import { DashboardProvider } from '@/context/DashboardContext';
 export const metadata: Metadata = {
   title: "FLK Performance Dashboard | PT SIM",
   description: "Real-time recruitment performance monitoring",
+  icons: {
+    icon: "/sourcingicon.jpeg",
+  },
 };
 
 export const viewport = {

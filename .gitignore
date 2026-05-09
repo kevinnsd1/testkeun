@@ -33,3 +33,10 @@ Thumbs.db
 # Scratch / temp files
 scratch/
 **/scratch/
+
+# Local tool files
+.claude/
+**/.claude/
+.gemini/
+**/.gemini/
+test_write.txt

@@ -22,6 +22,7 @@ import {
   Shield
 } from 'lucide-react';
 import { useDashboard } from '@/context/DashboardContext';
+import DateRangePicker from './DateRangePicker';
 
 const Sidebar = ({ isCollapsed, toggleCollapse, isMobileOpen, closeMobile }: { isCollapsed?: boolean, toggleCollapse?: () => void, isMobileOpen?: boolean, closeMobile?: () => void }) => {
   const { filters, setFilters, filterOptions, isDarkMode, setIsDarkMode, activeTable, setActiveTable, user, logout } = useDashboard();
@@ -29,17 +30,27 @@ const Sidebar = ({ isCollapsed, toggleCollapse, isMobileOpen, closeMobile }: { i
   const router = useRouter();
 
   const handleFilterChange = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters(prev => {
+      const newFilters = { ...prev, [key]: value };
+      // Reset kota if provinsi changes to keep them in sync
+      if (key === 'provinsi') newFilters.kota = '';
+      return newFilters;
+    });
   };
 
-  const resetFilters = () => setFilters({ 
-    periode: '', 
-    provinsi: '', 
-    pengalaman: '', 
-    pendidikan: '', 
-    jenisKelamin: '', 
-    minatPosisi: '' 
-  });
+  const resetFilters = () => {
+    setFilters({ 
+      startDate: '',
+      endDate: '',
+      provinsi: '', 
+      kota: '',
+      pengalaman: '', 
+      pendidikan: '', 
+      jenisKelamin: '', 
+      minatPosisi: '',
+      showSelectedOnly: false
+    });
+  };
 
   return (
     <>
@@ -107,17 +118,28 @@ const Sidebar = ({ isCollapsed, toggleCollapse, isMobileOpen, closeMobile }: { i
             </div>
             
             <div className="filter-group">
-              <label><Calendar size={12} color="#3b82f6" /> Periode</label>
-              <select value={filters.periode} onChange={(e) => handleFilterChange('periode', e.target.value)}>
-                <option value="">Semua Periode</option>
-                {filterOptions.periodeKeys.map(k => <option key={k} value={k}>{k}</option>)}
-              </select>
+              <label><Calendar size={12} color="#3b82f6" /> Rentang Tanggal</label>
+              <DateRangePicker 
+                startDate={filters.startDate} 
+                endDate={filters.endDate} 
+                onChange={(start, end) => {
+                  handleFilterChange('startDate', start);
+                  handleFilterChange('endDate', end);
+                }} 
+              />
             </div>
             <div className="filter-group">
               <label><MapPin size={12} color="#ef4444" /> Provinsi Domisili</label>
               <select value={filters.provinsi} onChange={(e) => handleFilterChange('provinsi', e.target.value)}>
                 <option value="">Semua Provinsi</option>
                 {filterOptions.provinsis.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="filter-group">
+              <label><MapPin size={12} color="#8b5cf6" /> Kota / Kecamatan</label>
+              <select value={filters.kota} onChange={(e) => handleFilterChange('kota', e.target.value)}>
+                <option value="">Semua Kota/Kec</option>
+                {filterOptions.kotas.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             </div>
             <div className="filter-group">
@@ -229,7 +251,7 @@ const Sidebar = ({ isCollapsed, toggleCollapse, isMobileOpen, closeMobile }: { i
           top: 0;
           z-index: 100;
           transition: width 0.3s;
-          overflow: hidden;
+          overflow: visible;
         }
 
         .sidebar.collapsed {
@@ -342,7 +364,7 @@ const Sidebar = ({ isCollapsed, toggleCollapse, isMobileOpen, closeMobile }: { i
         .sidebar-nav {
           flex: 1;
           padding: 12px;
-          overflow-y: hidden; /* Disable scrolling entirely */
+          overflow-y: visible; /* Allow popovers to leak out */
           /* Hide scrollbar for Chrome, Safari and Opera */
           &::-webkit-scrollbar {
             display: none;
