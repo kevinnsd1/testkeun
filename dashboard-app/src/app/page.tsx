@@ -1,8 +1,8 @@
 "use client";
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import * as XLSX from "xlsx";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import {
   Filter,
   Download,
@@ -29,32 +29,52 @@ import {
   Send,
   Minimize2,
   ArrowLeft,
-} from 'lucide-react';
-import { useDashboard } from '@/context/DashboardContext';
+} from "lucide-react";
+import { useDashboard } from "@/context/DashboardContext";
 
 const getProvince = (row: any, activeTable: string): string => {
-  if (activeTable === 'FLK_Onsite' || activeTable === 'FLK_Recruitment') {
-    return row.provinsi_minat_penempatan || row.minat_penempatan || '';
+  if (activeTable === "FLK_Onsite" || activeTable === "FLK_Recruitment") {
+    return row.provinsi_minat_penempatan || row.minat_penempatan || "";
   }
-  return row.provinsi_domisili || row.provinsi_dom || row.provinsi_minat_penempatan || row.minat_penempatan || '';
+  return (
+    row.provinsi_domisili ||
+    row.provinsi_dom ||
+    row.provinsi_minat_penempatan ||
+    row.minat_penempatan ||
+    ""
+  );
 };
 
 const getKota = (row: any, activeTable: string): string => {
   switch (activeTable) {
-    case 'FLK_ADIRA': return row.kecamatan || '';
-    case 'FLK_BI': return row.kecamatan || '';
-    case 'FLK_HC': return row.kecamatan || '';
-    case 'FLK_Jateng_CC': return row.minat_kota_penempatan || '';
-    case 'FLK_Lookerin': return row.kecamatan || '';
-    case 'FLK_MRM': return row.kecamatan || '';
-    case 'FLK_Midea': return row.kecamatan || '';
-    case 'FLK_Nasional': return row.kecamatan_domisili || '';
-    case 'FLK_Onsite': return row.kecamatan || '';
-    case 'FLK_Pertanian': return '';
-    case 'FLK_REVOFIF': return row.kecamatan || '';
-    case 'FLK_Recruitment': return row.kota_minat_penempatan || '';
-    case 'FLK_Revoadira': return row.kecamatan || '';
-    default: return row.kecamatan || row.kota || '';
+    case "FLK_ADIRA":
+      return row.kecamatan || "";
+    case "FLK_BI":
+      return row.kecamatan || "";
+    case "FLK_HC":
+      return row.kecamatan || "";
+    case "FLK_Jateng_CC":
+      return row.minat_kota_penempatan || "";
+    case "FLK_Lookerin":
+      return row.kecamatan || "";
+    case "FLK_MRM":
+      return row.kecamatan || "";
+    case "FLK_Midea":
+      return row.kecamatan || "";
+    case "FLK_Nasional":
+      return row.kecamatan_domisili || "";
+    case "FLK_Onsite":
+      return row.kecamatan || "";
+    case "FLK_Pertanian":
+      return "";
+    case "FLK_REVOFIF":
+      return row.kecamatan || "";
+    case "FLK_Recruitment":
+      return row.kota_minat_penempatan || "";
+    case "FLK_Revoadira":
+      return row.kecamatan || "";
+    default:
+      return row.kecamatan || row.kota || "";
   }
 };
 
@@ -63,11 +83,18 @@ const DMY_TABLES = new Set<string>([]);
 
 const getTimestamp = (row: any, table?: string): any => {
   // Untuk Nasional, prioritaskan kolom tanggal_daftar (Proper Date)
-  if (table === 'FLK_Nasional') {
+  if (table === "FLK_Nasional") {
     return row.tanggal_daftar || row.timestamp || row.tgl_lamar || null;
   }
   // Default prioritaskan timestamp, lalu tgl_lamar
-  return row.timestamp || row.tgl_lamar || row.TGL_LAMAR || row.tanggal_lamar || row.Tanggal_Lamar || null;
+  return (
+    row.timestamp ||
+    row.tgl_lamar ||
+    row.TGL_LAMAR ||
+    row.tanggal_lamar ||
+    row.Tanggal_Lamar ||
+    null
+  );
 };
 
 const parseRowDate = (ts: any, preferDMY = false): string | null => {
@@ -88,25 +115,29 @@ const parseRowDate = (ts: any, preferDMY = false): string | null => {
     let month: number, day: number;
     if (a > 12) {
       // a pasti hari (tidak mungkin bulan ke-13+) → D/M/YYYY
-      day = a; month = b;
+      day = a;
+      month = b;
     } else if (b > 12) {
       // b pasti hari → M/D/YYYY
-      month = a; day = b;
+      month = a;
+      day = b;
     } else if (preferDMY) {
       // Ambiguous + tabel Indonesia → anggap D/M/YYYY
-      day = a; month = b;
+      day = a;
+      month = b;
     } else {
       // Default Google Sheets → M/D/YYYY
-      month = a; day = b;
+      month = a;
+      day = b;
     }
     if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-    return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return `${y}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
 
   // Fallback — native parse sebagai local date
   const dt = new Date(s);
   if (isNaN(dt.getTime())) return null;
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 };
 
 // Helper tunggal untuk dapat tanggal dari row (table-aware)
@@ -114,46 +145,45 @@ const getRowDate = (row: any, table: string): string | null =>
   parseRowDate(getTimestamp(row, table), DMY_TABLES.has(table));
 
 const getDateColumn = (table: string): string => {
-  if (table === 'FLK_Nasional') return 'tanggal_daftar';
-  if (table === 'FLK_Recruitment') return 'tgl_lamar';
-  if (table === 'FLK_Pertanian') return 'tanggal_lamar';
-  if (table === 'FLK_Jateng_CC' || table === 'FLK_JATENG-CC') return 'tgl_lamar';
-  return 'timestamp';
+  if (table === "FLK_Nasional") return "tanggal_daftar";
+  if (table === "FLK_Recruitment") return "tgl_lamar";
+  if (table === "FLK_Pertanian") return "tanggal_lamar";
+  if (table === "FLK_Jateng_CC" || table === "FLK_JATENG-CC")
+    return "tgl_lamar";
+  return "timestamp";
 };
 
 const parseToDate = (str: any): Date => {
-  if (!str || str === '-') return new Date(0);
+  if (!str || str === "-") return new Date(0);
   let ds = String(str);
-  
-  if (ds.includes('/') && ds.includes('T')) {
-    const [datePart, timePart] = ds.split('T');
-    const parts = datePart.split('/');
+
+  if (ds.includes("/") && ds.includes("T")) {
+    const [datePart, timePart] = ds.split("T");
+    const parts = datePart.split("/");
     if (parts.length === 3) {
       const [m, d, y] = parts;
-      const timeComponents = timePart.replace('Z', '').split(':');
-      const h = (timeComponents[0] || '0').padStart(2, '0');
-      const min = (timeComponents[1] || '0').padStart(2, '0');
-      const s = (timeComponents[2] || '00').split('.')[0].padStart(2, '0');
-      ds = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${h}:${min}:${s}`;
+      const timeComponents = timePart.replace("Z", "").split(":");
+      const h = (timeComponents[0] || "0").padStart(2, "0");
+      const min = (timeComponents[1] || "0").padStart(2, "0");
+      const s = (timeComponents[2] || "00").split(".")[0].padStart(2, "0");
+      ds = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T${h}:${min}:${s}`;
     }
   }
-  
+
   const d = new Date(ds);
   return isNaN(d.getTime()) ? new Date(0) : d;
 };
 
 const formatPeriodKey = (key: string): string => {
-  const [y, m] = key.split('-');
+  const [y, m] = key.split("-");
   const d = new Date(Number(y), Number(m) - 1);
-  return d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  return d.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
 };
 
-const SPECIAL_TABLES = ['FLK_Jateng_CC', 'FLK_JATENG-CC', 'FLK_Pertanian'];
+const SPECIAL_TABLES = ["FLK_Jateng_CC", "FLK_JATENG-CC", "FLK_Pertanian"];
 
 const RevofifPage = () => {
   const [data, setData] = useState<any[]>([]);
-  const [searchResults, setSearchResults] = useState<any[] | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [globalStats, setGlobalStats] = useState<any>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -163,27 +193,40 @@ const RevofifPage = () => {
   const [exportProgress, setExportProgress] = useState(0);
   const fetchGenRef = useRef(0);
   const [confirmModal, setConfirmModal] = useState<string | null>(null);
-  const { filters, setFilters, setFilterOptions, activeTable, user, selectedIds, setSelectedIds } = useDashboard();
+  const {
+    filters,
+    setFilters,
+    setFilterOptions,
+    activeTable,
+    user,
+    selectedIds,
+    setSelectedIds,
+  } = useDashboard();
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
   const [deleteHistoryId, setDeleteHistoryId] = useState<string | null>(null);
-  const [limitModal, setLimitModal] = useState<{ show: boolean, message: string } | null>(null);
-  
+  const [limitModal, setLimitModal] = useState<{
+    show: boolean;
+    message: string;
+  } | null>(null);
+
   // --- CHAT FEATURE STATES (PRIVATE) ---
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  const [inputMessage, setInputMessage] = useState('');
+  const [inputMessage, setInputMessage] = useState("");
   const [selectedChatUser, setSelectedChatUser] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const isSuperAdmin = user?.username === 'superadmin';
+  const isSuperAdmin = user?.username === "superadmin";
 
   // Get unique list of users who have chatted (for superadmin view)
   const chatUsers = useMemo(() => {
-    return Array.from(new Set(
-      messages
-        .filter(m => m.sender && m.sender !== 'superadmin')
-        .map(m => m.sender)
-    ));
+    return Array.from(
+      new Set(
+        messages
+          .filter((m) => m.sender && m.sender !== "superadmin")
+          .map((m) => m.sender),
+      ),
+    );
   }, [messages]);
 
   // Subscribe to real-time chat messages
@@ -193,26 +236,30 @@ const RevofifPage = () => {
     const fetchMessages = async () => {
       try {
         const { data: msgs, error } = await supabase
-          .from('messages')
-          .select('*')
-          .order('created_at', { ascending: true })
+          .from("messages")
+          .select("*")
+          .order("created_at", { ascending: true })
           .limit(200);
-        
+
         if (!error && msgs) setMessages(msgs);
       } catch (err) {
-        console.error('Error fetching messages:', err);
+        console.error("Error fetching messages:", err);
       }
     };
 
     fetchMessages();
 
     const channel = supabase
-      .channel('public:messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
-        if (payload.new) {
-          setMessages(prev => [...prev, payload.new]);
-        }
-      })
+      .channel("public:messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload: any) => {
+          if (payload.new) {
+            setMessages((prev) => [...prev, payload.new]);
+          }
+        },
+      )
       .subscribe();
 
     return () => {
@@ -222,7 +269,7 @@ const RevofifPage = () => {
 
   useEffect(() => {
     if (chatEndRef.current && isChatOpen) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isChatOpen, selectedChatUser]);
 
@@ -230,32 +277,36 @@ const RevofifPage = () => {
     e.preventDefault();
     if (!inputMessage.trim() || !supabase) return;
 
-    const me = user?.username || 'Guest';
-    const receiver = isSuperAdmin ? selectedChatUser : 'superadmin';
+    const me = user?.username || "Guest";
+    const receiver = isSuperAdmin ? selectedChatUser : "superadmin";
 
     if (isSuperAdmin && !selectedChatUser) return;
 
     const newMessage = {
       sender: me,
       receiver: receiver,
-      content: inputMessage.trim()
+      content: inputMessage.trim(),
     };
 
-    const { error } = await supabase.from('messages').insert([newMessage]);
-    if (!error) setInputMessage('');
+    const { error } = await supabase.from("messages").insert([newMessage]);
+    if (!error) setInputMessage("");
   };
 
   // Filter messages based on who is viewing
   const filteredMessages = useMemo(() => {
-    const me = user?.username || 'Guest';
-    return messages.filter(msg => {
+    const me = user?.username || "Guest";
+    return messages.filter((msg) => {
       if (isSuperAdmin) {
         if (!selectedChatUser) return false;
-        return (msg.sender === me && msg.receiver === selectedChatUser) || 
-               (msg.sender === selectedChatUser && msg.receiver === me);
+        return (
+          (msg.sender === me && msg.receiver === selectedChatUser) ||
+          (msg.sender === selectedChatUser && msg.receiver === me)
+        );
       } else {
-        return (msg.sender === me && msg.receiver === 'superadmin') || 
-               (msg.sender === 'superadmin' && msg.receiver === me);
+        return (
+          (msg.sender === me && msg.receiver === "superadmin") ||
+          (msg.sender === "superadmin" && msg.receiver === me)
+        );
       }
     });
   }, [messages, user, selectedChatUser, isSuperAdmin]);
@@ -285,17 +336,27 @@ const RevofifPage = () => {
 
   // Authentication check
   useEffect(() => {
-    const savedUser = localStorage.getItem('dashboard-user');
+    const savedUser = localStorage.getItem("dashboard-user");
     if (!user && !savedUser) {
-      router.push('/login');
+      router.push("/login");
     }
   }, [user, router]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [cvFilter, setCvFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [cvFilter, setCvFilter] = useState<"all" | "with" | "without">("all");
+
+  const hasActiveFilter = useMemo(() => {
+    const entries = Object.entries(filters);
+    const hasMainFilters = entries.some(([key, val]) => {
+      if (key === "showSelectedOnly") return false;
+      if (typeof val === "boolean") return val === true;
+      return val !== "";
+    });
+    return hasMainFilters || cvFilter !== "all" || !!debouncedSearchTerm;
+  }, [filters, cvFilter, debouncedSearchTerm]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -316,179 +377,294 @@ const RevofifPage = () => {
   const fetchDashboardData = async () => {
     const gen = ++fetchGenRef.current;
     setLoading(true);
-    setGlobalStats(null);
-    setTotalRecords(0);
 
     const targetTable = activeTable;
     const dateCol = getDateColumn(targetTable);
 
     try {
-      // 1. Build Query with Filters
-      let query = supabase
-        .from(targetTable)
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
-      // [LANGKAH 2] PERMANENT DATE FILTERING
+      console.log(`Fetching ${targetTable} with date column: ${dateCol}`);
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
+
+      let query = supabase.from(targetTable).select("*", { count: "exact" });
+
+      // [INTEGRASI SEARCH]
+      if (debouncedSearchTerm) {
+        const isSpecialTable = SPECIAL_TABLES.includes(targetTable);
+        const searchColumn = isSpecialTable
+          ? "minat_pekerjaan"
+          : "minat_posisi_1";
+        const formattedSearch = debouncedSearchTerm
+          .trim()
+          .split(/\s+/)
+          .map((t) => `'${t}:*'`)
+          .join(" | ");
+        query = query.textSearch(searchColumn, formattedSearch);
+      }
+
+      // [FILTER TANGGAL]
       if (filters.startDate) {
-        if (dateCol === 'tanggal_daftar') {
-          // Filter super kenceng pake kolom TIMESTAMPTZ & INDEX
-          const start = filters.startDate; // YYYY-MM-DD
-          const end = filters.endDate || filters.startDate;
-          query = query.gte('tanggal_daftar', `${start}T00:00:00Z`)
-                       .lte('tanggal_daftar', `${end}T23:59:59Z`);
+        const start = filters.startDate;
+        const end = filters.endDate || filters.startDate;
+        const lowerCol = dateCol.toLowerCase();
+        
+        if (lowerCol === "tanggal_daftar" || lowerCol === "timestamp" || lowerCol === "created_at") {
+          query = query
+            .gte(dateCol, `${start}T00:00:00Z`)
+            .lte(dateCol, `${end}T23:59:59Z`);
         } else {
-          // Trik ilike buat tabel yang belum dimigrasi (Langkah 1)
-          const start = filters.startDate; 
-          const [y, m, d] = start.split('-');
+          const [y, m, d] = start.split("-");
           const monthNum = parseInt(m, 10).toString();
-          query = query.or(`${dateCol}.ilike.${monthNum}/%/${y},${dateCol}.ilike.${y}-${m}-%`);
+          query = query.or(
+            `${dateCol}.ilike.${monthNum}/%/${y},${dateCol}.ilike.${y}-${m}-%`,
+          );
         }
       }
 
-      // Apply Other Filters
+      // [FILTER CV]
+      if (cvFilter !== "all") {
+        if (targetTable === "FLK_Nasional") {
+          if (cvFilter === "with") {
+            query = query.or("upload_cv.not.is.null,file_url.not.is.null");
+          } else {
+            query = query.is("upload_cv", null).is("file_url", null);
+          }
+        } else {
+          if (cvFilter === "with") {
+            query = query.not("upload_cv", "is", null);
+          } else {
+            query = query.is("upload_cv", null);
+          }
+        }
+      }
+
+      // [FILTER LAINNYA]
       if (filters.provinsi) {
-        query = query.or(`provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`);
+        query = query.or(
+          `provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`,
+        );
       }
       if (filters.kota) {
-        query = query.or(`kecamatan.eq."${filters.kota}",kecamatan_domisili.eq."${filters.kota}",kota_minat_penempatan.eq."${filters.kota}",minat_kota_penempatan.eq."${filters.kota}"`);
+        query = query.or(
+          `kecamatan.eq."${filters.kota}",kecamatan_domisili.eq."${filters.kota}",kota_minat_penempatan.eq."${filters.kota}",minat_kota_penempatan.eq."${filters.kota}"`,
+        );
       }
       if (filters.pengalaman) {
-        query = query.or(`durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`);
+        query = query.or(
+          `durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`,
+        );
       }
       if (filters.pendidikan) {
-        query = query.eq('pendidikan_terakhir', filters.pendidikan);
+        query = query.eq("pendidikan_terakhir", filters.pendidikan);
       }
       if (filters.jenisKelamin) {
-        query = query.eq('jenis_kelamin', filters.jenisKelamin);
+        query = query.eq("jenis_kelamin", filters.jenisKelamin);
       }
       if (filters.minatPosisi) {
-        query = query.or(`minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`);
+        query = query.or(
+          `minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`,
+        );
       }
 
+      // [SORTING & RANGE]
+      query = query.order("created_at", { ascending: false }).range(from, to);
+
       // 2. Execute Query
-      // Fetch up to 3000 matching rows. The server-side filters above will ensure we get the right ones.
-      const { data: result, error, count } = await query.limit(3000);
+      const { data: result, error, count } = await query;
 
       if (error) throw error;
-      
       if (gen !== fetchGenRef.current) return;
 
-      // 3. ROBUST CLIENT-SIDE SORTING
-      const sortedData = (result || []).sort((a, b) => {
-        const timeA = parseToDate(getTimestamp(a, targetTable)).getTime();
-        const timeB = parseToDate(getTimestamp(b, targetTable)).getTime();
-        if (timeB !== timeA) return timeB - timeA;
-        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-      });
-
-      setData(sortedData);
+      // Update Data & Total
+      setData(result || []);
       setTotalRecords(count || 0);
       setLastRefresh(new Date());
 
-      // 4. Parallel Stats Fetch
-      const statsPromise = supabase.rpc('get_flk_stats', { table_name: targetTable });
-      const lCountPromise = supabase.from(targetTable).select('id', { count: 'exact', head: true }).eq('jenis_kelamin', 'L');
-      const pCountPromise = supabase.from(targetTable).select('id', { count: 'exact', head: true }).eq('jenis_kelamin', 'P');
+      // 3. Parallel Stats Fetch
+      if (currentPage === 1) {
+        const statsPromise = supabase.rpc("get_flk_stats", {
+          table_name: targetTable,
+        });
+        
+        // Helper untuk buat query statistik dengan filter yang sama
+        const buildStatQuery = () => {
+          let q = supabase.from(targetTable).select('id', { count: 'exact', head: true });
+          if (debouncedSearchTerm) {
+            const isSpecialTable = SPECIAL_TABLES.includes(targetTable);
+            const searchColumn = isSpecialTable ? 'minat_pekerjaan' : 'minat_posisi_1';
+            const formattedSearch = debouncedSearchTerm.trim().split(/\s+/).map(t => `'${t}:*'`).join(' | ');
+            q = q.textSearch(searchColumn, formattedSearch);
+          }
+          if (filters.startDate) {
+            const start = filters.startDate;
+            const end = filters.endDate || filters.startDate;
+            const lowerCol = dateCol.toLowerCase();
+            if (lowerCol === 'tanggal_daftar' || lowerCol === 'timestamp' || lowerCol === 'created_at') {
+              q = q.gte(dateCol, `${start}T00:00:00Z`).lte(dateCol, `${end}T23:59:59Z`);
+            } else {
+              const [y, m] = start.split('-');
+              const monthNum = parseInt(m, 10).toString();
+              q = q.or(`${dateCol}.ilike.${monthNum}/%/${y},${dateCol}.ilike.${y}-${m}-%`);
+            }
+          }
+          if (filters.provinsi) q = q.or(`provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`);
+          if (filters.kota) q = q.or(`kecamatan.eq."${filters.kota}",kecamatan_domisili.eq."${filters.kota}",kota_minat_penempatan.eq."${filters.kota}",minat_kota_penempatan.eq."${filters.kota}"`);
+          if (filters.pendidikan) q = q.eq('pendidikan_terakhir', filters.pendidikan);
+          if (filters.jenisKelamin) q = q.eq('jenis_kelamin', filters.jenisKelamin);
+          return q;
+        };
 
-      const [
-        { data: stats, error: statsError },
-        { count: lCount },
-        { count: pCount },
-      ] = await Promise.all([statsPromise, lCountPromise, pCountPromise]);
+        const lCountPromise = buildStatQuery().eq('jenis_kelamin', 'L');
+        const pCountPromise = buildStatQuery().eq('jenis_kelamin', 'P');
 
-      if (gen !== fetchGenRef.current) return;
+        const [
+          { data: stats, error: statsError },
+          { count: lCount },
+          { count: pCount },
+        ] = await Promise.all([statsPromise, lCountPromise, pCountPromise]);
 
-      if (!statsError && stats) {
-        if (lCount) stats.male += lCount;
-        if (pCount) stats.female += pCount;
-        setGlobalStats(stats);
+        if (gen === fetchGenRef.current && !statsError && stats) {
+          if (hasActiveFilter) {
+            stats.male = lCount || 0;
+            stats.female = pCount || 0;
+            stats.total = (lCount || 0) + (pCount || 0);
+          } else {
+            if (lCount !== null) stats.male = lCount;
+            if (pCount !== null) stats.female = pCount;
+          }
+          setGlobalStats(stats);
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       if (gen !== fetchGenRef.current) return;
-      console.error('Error fetching data:', err);
+      console.error("Error fetching data:", err.message || err, err);
     } finally {
       if (gen === fetchGenRef.current) setLoading(false);
     }
   };
 
-  const executeSearch = async (term: string) => {
-    if (!term) {
-      setSearchResults(null);
-      return;
-    }
-    setIsSearching(true);
-    try {
-      const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
-      const searchColumn = isSpecialTable ? 'minat_pekerjaan' : 'minat_posisi_1';
-      const fetchLimit = isSpecialTable ? 10000 : 1000;
-      const formattedSearch = term.trim().split(/\s+/).map(t => `'${t}:*'`).join(' | ');
-      const { data: result, error } = await supabase
-        .from(activeTable)
-        .select('*')
-        .textSearch(searchColumn, formattedSearch)
-        .order('created_at', { ascending: false })
-        .limit(fetchLimit);
-
-      if (error) throw error;
-
-      const sortedSearch = (result || []).sort((a, b) => {
-        const dateA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const dateB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return dateB - dateA;
-      });
-
-      setSearchResults(sortedSearch);
-    } catch (err) {
-      console.error('Error searching data:', err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+  useEffect(() => {
+    fetchDashboardData();
+  }, [
+    activeTable,
+    currentPage,
+    itemsPerPage,
+    filters,
+    cvFilter,
+    debouncedSearchTerm,
+  ]);
 
   useEffect(() => {
-    setFilters({
-      startDate: '',
-      endDate: '',
-      provinsi: '',
-      kota: '',
-      pengalaman: '',
-      pendidikan: '',
-      jenisKelamin: '',
-      minatPosisi: '',
-      showSelectedOnly: false
-    });
-    fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 60000);
     return () => clearInterval(interval);
-  }, [activeTable]);
-
-  useEffect(() => {
-    executeSearch(debouncedSearchTerm);
-  }, [debouncedSearchTerm]);
+  }, [
+    activeTable,
+    currentPage,
+    itemsPerPage,
+    filters,
+    cvFilter,
+    debouncedSearchTerm,
+  ]);
 
   const localFilterOptions = useMemo(() => {
     const getFilteredFor = (excludedKey: string) => {
-      return data.filter(row => {
+      return data.filter((row) => {
         const rowDate = parseRowDate(getTimestamp(row, activeTable));
-        if (excludedKey !== 'date' && filters.startDate && rowDate && (rowDate < filters.startDate || rowDate > (filters.endDate || filters.startDate))) return false;
-        if (excludedKey !== 'provinsi' && filters.provinsi && getProvince(row, activeTable) !== filters.provinsi) return false;
-        if (excludedKey !== 'pengalaman' && filters.pengalaman && (row.durasi_pengalaman_kerja || row.memiliki_pengalaman_kerja) !== filters.pengalaman) return false;
-        if (excludedKey !== 'pendidikan' && filters.pendidikan && row.pendidikan_terakhir !== filters.pendidikan) return false;
-        if (excludedKey !== 'jenisKelamin' && filters.jenisKelamin && row.jenis_kelamin !== filters.jenisKelamin) return false;
-        if (excludedKey !== 'minatPosisi' && filters.minatPosisi && (row.minat_posisi_1 || row.minat_pekerjaan) !== filters.minatPosisi) return false;
-        if (excludedKey !== 'kota' && filters.kota && getKota(row, activeTable) !== filters.kota) return false;
+        if (
+          excludedKey !== "date" &&
+          filters.startDate &&
+          rowDate &&
+          (rowDate < filters.startDate ||
+            rowDate > (filters.endDate || filters.startDate))
+        )
+          return false;
+        if (
+          excludedKey !== "provinsi" &&
+          filters.provinsi &&
+          getProvince(row, activeTable) !== filters.provinsi
+        )
+          return false;
+        if (
+          excludedKey !== "pengalaman" &&
+          filters.pengalaman &&
+          (row.durasi_pengalaman_kerja || row.memiliki_pengalaman_kerja) !==
+            filters.pengalaman
+        )
+          return false;
+        if (
+          excludedKey !== "pendidikan" &&
+          filters.pendidikan &&
+          row.pendidikan_terakhir !== filters.pendidikan
+        )
+          return false;
+        if (
+          excludedKey !== "jenisKelamin" &&
+          filters.jenisKelamin &&
+          row.jenis_kelamin !== filters.jenisKelamin
+        )
+          return false;
+        if (
+          excludedKey !== "minatPosisi" &&
+          filters.minatPosisi &&
+          (row.minat_posisi_1 || row.minat_pekerjaan) !== filters.minatPosisi
+        )
+          return false;
+        if (
+          excludedKey !== "kota" &&
+          filters.kota &&
+          getKota(row, activeTable) !== filters.kota
+        )
+          return false;
         return true;
       });
     };
 
     return {
-      periodeKeys: [], // No longer used as a dropdown list
-      provinsis: [...new Set(getFilteredFor('provinsi').map(d => getProvince(d, activeTable)).filter(Boolean))].sort() as string[],
-      pengalamans: [...new Set(getFilteredFor('pengalaman').map(d => d.durasi_pengalaman_kerja || d.memiliki_pengalaman_kerja).filter(Boolean))].sort() as string[],
-      pendidikans: [...new Set(getFilteredFor('pendidikan').map(d => d.pendidikan_terakhir).filter(Boolean))].sort() as string[],
-      jenisKelamins: [...new Set(getFilteredFor('jenisKelamin').map(d => d.jenis_kelamin).filter(Boolean))].sort() as string[],
-      minatPosis: [...new Set(getFilteredFor('minatPosisi').map(d => d.minat_posisi_1 || d.minat_pekerjaan).filter(Boolean))].sort() as string[],
-      kotas: [...new Set(getFilteredFor('kota').map(d => getKota(d, activeTable)).filter(Boolean))].sort() as string[],
+      periodeKeys: [],
+      provinsis: [
+        ...new Set(
+          getFilteredFor("provinsi")
+            .map((d) => getProvince(d, activeTable))
+            .filter(Boolean),
+        ),
+      ].sort() as string[],
+      pengalamans: [
+        ...new Set(
+          getFilteredFor("pengalaman")
+            .map(
+              (d) => d.durasi_pengalaman_kerja || d.memiliki_pengalaman_kerja,
+            )
+            .filter(Boolean),
+        ),
+      ].sort() as string[],
+      pendidikans: [
+        ...new Set(
+          getFilteredFor("pendidikan")
+            .map((d) => d.pendidikan_terakhir)
+            .filter(Boolean),
+        ),
+      ].sort() as string[],
+      jenisKelamins: [
+        ...new Set(
+          getFilteredFor("jenisKelamin")
+            .map((d) => d.jenis_kelamin)
+            .filter(Boolean),
+        ),
+      ].sort() as string[],
+      minatPosis: [
+        ...new Set(
+          getFilteredFor("minatPosisi")
+            .map((d) => d.minat_posisi_1 || d.minat_pekerjaan)
+            .filter(Boolean),
+        ),
+      ].sort() as string[],
+      kotas: [
+        ...new Set(
+          getFilteredFor("kota")
+            .map((d) => getKota(d, activeTable))
+            .filter(Boolean),
+        ),
+      ].sort() as string[],
     };
   }, [data, filters, activeTable]);
 
@@ -497,110 +673,82 @@ const RevofifPage = () => {
   }, [localFilterOptions, setFilterOptions]);
 
   // 1. Dashboard Filtered Data (For Scoreboards & Stats)
-  const dashboardFilteredData = useMemo(() => data.filter(row => {
-    const rowDate = parseRowDate(getTimestamp(row, activeTable));
-    if (filters.startDate && rowDate && (rowDate < filters.startDate || rowDate > (filters.endDate || filters.startDate))) return false;
-    if (filters.provinsi && getProvince(row, activeTable) !== filters.provinsi) return false;
-    if (filters.pengalaman && (row.durasi_pengalaman_kerja || row.memiliki_pengalaman_kerja) !== filters.pengalaman) return false;
-    if (filters.pendidikan && row.pendidikan_terakhir !== filters.pendidikan) return false;
-    if (filters.jenisKelamin && row.jenis_kelamin !== filters.jenisKelamin) return false;
-    if (filters.minatPosisi && (row.minat_posisi_1 || row.minat_pekerjaan) !== filters.minatPosisi) return false;
-    if (filters.kota && getKota(row, activeTable) !== filters.kota) return false;
-    
-    // CV filter
-    if (cvFilter !== 'all') {
-      const cvField = activeTable === 'FLK_Nasional' ? (row.upload_cv || row.file_url) : row.upload_cv;
-      if (cvFilter === 'with' && !cvField) return false;
-      if (cvFilter === 'without' && cvField) return false;
-    }
+  const dashboardFilteredData = useMemo(
+    () =>
+      data.filter((row) => {
+        const rowDate = parseRowDate(getTimestamp(row, activeTable));
+        if (
+          filters.startDate &&
+          rowDate &&
+          (rowDate < filters.startDate ||
+            rowDate > (filters.endDate || filters.startDate))
+        )
+          return false;
+        if (
+          filters.provinsi &&
+          getProvince(row, activeTable) !== filters.provinsi
+        )
+          return false;
+        if (
+          filters.pengalaman &&
+          (row.durasi_pengalaman_kerja || row.memiliki_pengalaman_kerja) !==
+            filters.pengalaman
+        )
+          return false;
+        if (
+          filters.pendidikan &&
+          row.pendidikan_terakhir !== filters.pendidikan
+        )
+          return false;
+        if (filters.jenisKelamin && row.jenis_kelamin !== filters.jenisKelamin)
+          return false;
+        if (
+          filters.minatPosisi &&
+          (row.minat_posisi_1 || row.minat_pekerjaan) !== filters.minatPosisi
+        )
+          return false;
+        if (filters.kota && getKota(row, activeTable) !== filters.kota)
+          return false;
 
-    // Checkbox selection filter
-    if (filters.showSelectedOnly && !selectedIds.has(row.id || row.ID)) return false;
+        // CV filter
+        if (cvFilter !== "all") {
+          const cvField =
+            activeTable === "FLK_Nasional"
+              ? row.upload_cv || row.file_url
+              : row.upload_cv;
+          if (cvFilter === "with" && !cvField) return false;
+          if (cvFilter === "without" && cvField) return false;
+        }
 
-    return true;
-  }), [data, filters, cvFilter, activeTable, selectedIds]);
+        // Checkbox selection filter
+        if (filters.showSelectedOnly && !selectedIds.has(row.id || row.ID))
+          return false;
 
-  // 2. Table Filtered Data (Uses searchResults if searching, else data)
-  const tableFilteredData = useMemo(() => {
-    const sourceData = searchResults !== null ? searchResults : data;
-    return sourceData.filter(row => {
-      const rowDate = parseRowDate(getTimestamp(row, activeTable));
-      if (filters.startDate && rowDate && (rowDate < filters.startDate || rowDate > (filters.endDate || filters.startDate))) return false;
-      if (filters.provinsi && getProvince(row, activeTable) !== filters.provinsi) return false;
-      if (filters.pengalaman && (row.durasi_pengalaman_kerja || row.memiliki_pengalaman_kerja) !== filters.pengalaman) return false;
-      if (filters.pendidikan && row.pendidikan_terakhir !== filters.pendidikan) return false;
-      if (filters.jenisKelamin && row.jenis_kelamin !== filters.jenisKelamin) return false;
-      if (filters.minatPosisi && (row.minat_posisi_1 || row.minat_pekerjaan) !== filters.minatPosisi) return false;
-      if (filters.kota && getKota(row, activeTable) !== filters.kota) return false;
-      // CV filter — khusus Nasional: prioritas upload_cv lalu file_url
-      if (cvFilter !== 'all') {
-        const cvField = activeTable === 'FLK_Nasional' ? (row.upload_cv || row.file_url) : row.upload_cv;
-        if (cvFilter === 'with' && !cvField) return false;
-        if (cvFilter === 'without' && cvField) return false;
-      }
-      // Checkbox selection filter
-      if (filters.showSelectedOnly && !selectedIds.has(row.id || row.ID)) return false;
-      
-      return true;
-    });
-  }, [data, searchResults, filters, cvFilter, activeTable]);
+        return true;
+      }),
+    [data, filters, cvFilter, activeTable, selectedIds],
+  );
 
-  const hasActiveFilter = useMemo(() => {
-    const entries = Object.entries(filters);
-    const hasMainFilters = entries.some(([key, val]) => {
-      if (typeof val === 'boolean') return val === true;
-      return val !== '';
-    });
-    return hasMainFilters || cvFilter !== 'all';
-  }, [filters, cvFilter]);
-
-  const total = useMemo(() => {
-    const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
-    if (!hasActiveFilter && globalStats && !isSpecialTable) return globalStats.total;
-    
-    // Kembalikan ke dashboardFilteredData.length agar sinkron dengan statistik L/P
-    return dashboardFilteredData.length;
-  }, [dashboardFilteredData.length, hasActiveFilter, globalStats, activeTable]);
+  const total = totalRecords;
+  const tableFilteredData = data;
+  const paginatedData = data;
+  const totalPages = Math.ceil(totalRecords / itemsPerPage);
 
   const genderStats = useMemo(() => {
-    const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
-    if (!hasActiveFilter && globalStats && !isSpecialTable) {
+    if (globalStats) {
       return { male: globalStats.male || 0, female: globalStats.female || 0 };
     }
-
-    let male = 0;
-    let female = 0;
-
-    dashboardFilteredData.forEach(d => {
-      const jk = (d.jenis_kelamin || '').toLowerCase();
-      // Use mutually exclusive logic to prevent double counting
-      if (jk === 'l' || (jk.includes('laki') && !jk.includes('perempuan'))) {
-        male++;
-      } else if (jk === 'p' || jk.includes('perempuan')) {
-        female++;
-      }
-    });
-
-    return { male, female };
-  }, [dashboardFilteredData, hasActiveFilter, globalStats, activeTable]);
+    return { male: 0, female: 0 };
+  }, [globalStats]);
 
   const maleCount = genderStats.male;
   const femaleCount = genderStats.female;
 
-  const totalPages = Math.ceil(tableFilteredData.length / itemsPerPage);
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return tableFilteredData.slice(startIndex, startIndex + itemsPerPage);
-  }, [tableFilteredData, currentPage, itemsPerPage]);
-
   const insights = useMemo(() => {
-    const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
-    // Use global stats if no filters active
-    if (!hasActiveFilter && globalStats && !isSpecialTable) {
-      // Group global top sources/positions to handle casing issues
+    if (globalStats) {
       const groupGlobalItems = (items: any[]) => {
         const grouped = items.reduce((acc: any, curr: any) => {
-          const name = (curr.name || '').toUpperCase().trim();
+          const name = (curr.name || "").toUpperCase().trim();
           acc[name] = (acc[name] || 0) + curr.count;
           return acc;
         }, {});
@@ -611,53 +759,25 @@ const RevofifPage = () => {
         topSources: groupGlobalItems(globalStats.top_sources || []),
         topPositions: groupGlobalItems(globalStats.top_positions || []),
         freshGrads: globalStats.fresh || 0,
-        expCount: (globalStats.total || 0) - (globalStats.fresh || 0)
+        expCount: (globalStats.total || 0) - (globalStats.fresh || 0),
       };
     }
-
-    if (dashboardFilteredData.length === 0) return {
-      topSources: [],
-      topPositions: [],
-      freshGrads: 0,
-      expCount: 0
-    };
-
-    const getTopItems = (arr: string[], limit = 3) => {
-      const counts = arr.reduce((acc: any, curr) => {
-        const normalized = curr.toUpperCase().trim();
-        acc[normalized] = (acc[normalized] || 0) + 1;
-        return acc;
-      }, {});
-      return Object.entries(counts)
-        .sort((a: any, b: any) => b[1] - a[1])
-        .slice(0, limit);
-    };
-
-    const sources = dashboardFilteredData.map(d => d.sumber_informasi).filter(Boolean);
-    const topSources = getTopItems(sources);
-
-    const positions = dashboardFilteredData.map(d => d.minat_posisi_1 || d.minat_pekerjaan).filter(Boolean);
-    const topPositions = getTopItems(positions);
-
-    const freshGrads = dashboardFilteredData.filter(d => d.durasi_pengalaman_kerja?.toLowerCase().includes('fresh')).length;
-    const expCount = dashboardFilteredData.length - freshGrads;
-
-    return { topSources, topPositions, freshGrads, expCount };
-  }, [dashboardFilteredData, hasActiveFilter, globalStats]);
+    return { topSources: [], topPositions: [], freshGrads: 0, expCount: 0 };
+  }, [globalStats]);
 
   const resetFilters = () => {
     setFilters({
-      startDate: '',
-      endDate: '',
-      provinsi: '',
-      kota: '',
-      pengalaman: '',
-      pendidikan: '',
-      jenisKelamin: '',
-      minatPosisi: '',
-      showSelectedOnly: false
+      startDate: "",
+      endDate: "",
+      provinsi: "",
+      kota: "",
+      pengalaman: "",
+      pendidikan: "",
+      jenisKelamin: "",
+      minatPosisi: "",
+      showSelectedOnly: false,
     });
-    setCvFilter('all');
+    setCvFilter("all");
   };
 
   const exportExcel = async () => {
@@ -666,70 +786,81 @@ const RevofifPage = () => {
     setExportProgress(0);
 
     try {
-      let exportData: any[];
+      let exportData: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
 
-      if (searchResults !== null) {
-        // Search mode: export filtered search results already in memory
-        exportData = tableFilteredData;
-      } else {
-        // Normal mode: paginate all matching rows from Supabase
-        exportData = [];
-        let from = 0;
-        const pageSize = 1000;
+      while (true) {
+        let query = supabase
+          .from(activeTable)
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(from, from + pageSize - 1);
 
-        while (true) {
-          let query = supabase
-            .from(activeTable)
-            .select('*')
-            .order('created_at', { ascending: false })
-            .range(from, from + pageSize - 1);
-
-          if (filters.startDate) {
-            // Kita saring secara client-side nanti untuk akurasi 100% dengan string M/D/YYYY
-            // tapi kita tetep bisa tambahin filter server-side kalau kolomnya native timestamp (created_at)
-            query = query.gte('created_at', `${filters.startDate}T00:00:00`);
-            if (filters.endDate) {
-              query = query.lte('created_at', `${filters.endDate}T23:59:59`);
-            }
-          }
-          if (filters.provinsi) {
-            query = query.or(`provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`);
-          }
-          if (filters.pengalaman) {
-            query = query.or(`durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`);
-          }
-          if (filters.pendidikan) {
-            query = query.eq('pendidikan_terakhir', filters.pendidikan);
-          }
-          if (filters.jenisKelamin) {
-            query = query.eq('jenis_kelamin', filters.jenisKelamin);
-          }
-          if (filters.minatPosisi) {
-            query = query.or(`minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`);
-          }
-
-          const { data: pageData, error } = await query;
-          if (error) throw error;
-          if (!pageData || pageData.length === 0) break;
-
-          exportData = [...exportData, ...pageData];
-          setExportProgress(exportData.length);
-          if (pageData.length < pageSize) break;
-          from += pageSize;
+        if (debouncedSearchTerm) {
+          const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
+          const searchColumn = isSpecialTable ? 'minat_pekerjaan' : 'minat_posisi_1';
+          const formattedSearch = debouncedSearchTerm.trim().split(/\s+/).map(t => `'${t}:*'`).join(' | ');
+          query = query.textSearch(searchColumn, formattedSearch);
         }
+        
+        if (filters.startDate) {
+          const dateCol = getDateColumn(activeTable);
+          if (dateCol === 'tanggal_daftar') {
+            query = query.gte('tanggal_daftar', `${filters.startDate}T00:00:00Z`).lte('tanggal_daftar', `${filters.endDate || filters.startDate}T23:59:59Z`);
+          }
+        }
+        if (filters.provinsi) {
+          query = query.or(`provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`);
+        }
+        if (filters.pengalaman) {
+          query = query.or(`durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`);
+        }
+        if (filters.pendidikan) {
+          query = query.eq('pendidikan_terakhir', filters.pendidikan);
+        }
+        if (filters.jenisKelamin) {
+          query = query.eq('jenis_kelamin', filters.jenisKelamin);
+        }
+        if (filters.minatPosisi) {
+          query = query.or(`minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`);
+        }
+
+        const { data: pageData, error } = await query;
+        if (error) throw error;
+        if (!pageData || pageData.length === 0) break;
+
+        exportData = [...exportData, ...pageData];
+        setExportProgress(exportData.length);
+        if (pageData.length < pageSize) break;
+        from += pageSize;
       }
 
       if (exportData.length === 0) {
-        alert('Tidak ada data untuk diekspor.');
+        alert("Tidak ada data untuk diekspor.");
         return;
       }
 
       const headers = [
-        'No', 'Tgl Lamar', 'Nama Lengkap', 'Email', 'No WA', 'No HP',
-        'Sumber Informasi', 'Tgl Lahir', 'Jenis Kelamin',
-        'Pengalaman Kerja', 'Durasi Pengalaman', 'Minat Posisi',
-        'Provinsi', 'Pendidikan', 'Sekolah/Kampus',
-        'Hasil Screening', 'Screening Time', 'Nomor Task', 'Link CV'
+        "No",
+        "Tgl Lamar",
+        "Nama Lengkap",
+        "Email",
+        "No WA",
+        "No HP",
+        "Sumber Informasi",
+        "Tgl Lahir",
+        "Jenis Kelamin",
+        "Pengalaman Kerja",
+        "Durasi Pengalaman",
+        "Minat Posisi",
+        "Provinsi",
+        "Pendidikan",
+        "Sekolah/Kampus",
+        "Hasil Screening",
+        "Screening Time",
+        "Nomor Task",
+        "Link CV",
       ];
 
       const worksheetData: any[][] = [headers];
@@ -737,34 +868,45 @@ const RevofifPage = () => {
         worksheetData.push([
           idx + 1,
           formatDate(r.timestamp, true),
-          r.nama_lengkap || '-',
-          r.email_aktif || r.email || '-',
-          r.no_wa || '-',
-          r.no_hp || '-',
-          r.sumber_informasi || '-',
+          r.nama_lengkap || "-",
+          r.email_aktif || r.email || "-",
+          r.no_wa || "-",
+          r.no_hp || "-",
+          r.sumber_informasi || "-",
           formatDate(r.tanggal_lahir),
-          r.jenis_kelamin || '-',
-          r.pengalaman_kerja_terakhir || r.pengalaman_kerja || '-',
-          r.durasi_pengalaman_kerja || r.memiliki_pengalaman_kerja || '-',
-          r.minat_posisi_1 || r.minat_pekerjaan || '-',
-          r.provinsi_domisili || r.provinsi_dom || r.provinsi_minat_penempatan || r.minat_penempatan || '-',
-          r.pendidikan_terakhir || '-',
-          r.nama_sekolah || '-',
-          r.hasil_screening || '-',
+          r.jenis_kelamin || "-",
+          r.pengalaman_kerja_terakhir || r.pengalaman_kerja || "-",
+          r.durasi_pengalaman_kerja || r.memiliki_pengalaman_kerja || "-",
+          r.minat_posisi_1 || r.minat_pekerjaan || "-",
+          r.provinsi_domisili ||
+            r.provinsi_dom ||
+            r.provinsi_minat_penempatan ||
+            r.minat_penempatan ||
+            "-",
+          r.pendidikan_terakhir || "-",
+          r.nama_sekolah || "-",
+          r.hasil_screening || "-",
           formatDate(r.screening_time, true),
-          r.nomor_task || '-',
-          (activeTable === 'FLK_Nasional' ? (r.upload_cv || r.file_url) : r.upload_cv) || '-'
+          r.nomor_task || "-",
+          (activeTable === "FLK_Nasional"
+            ? r.upload_cv || r.file_url
+            : r.upload_cv) || "-",
         ]);
       });
 
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Pelamar');
-      worksheet['!cols'] = headers.map(h => ({ wch: Math.min(h.length + 5, 50) }));
-      XLSX.writeFile(workbook, `FLK_Export_${activeTable}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Data Pelamar");
+      worksheet["!cols"] = headers.map((h) => ({
+        wch: Math.min(h.length + 5, 50),
+      }));
+      XLSX.writeFile(
+        workbook,
+        `FLK_Export_${activeTable}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
     } catch (err) {
-      console.error('Error exporting data:', err);
-      alert('Gagal mengekspor data. Silakan coba lagi.');
+      console.error("Error exporting data:", err);
+      alert("Gagal mengekspor data. Silakan coba lagi.");
     } finally {
       setIsExporting(false);
       setExportProgress(0);
@@ -774,78 +916,81 @@ const RevofifPage = () => {
   const updatePelamar = async (id: any, field: string, value: string) => {
     try {
       const updateData: any = { [field]: value };
-      const currentUsername = user?.username || 'System';
-      const isSuperAdmin = currentUsername === 'superadmin';
+      const currentUsername = user?.username || "System";
+      const isSuperAdmin = currentUsername === "superadmin";
 
       // Find the row and decide which ID column to use
-      const currentRow = data.find(r => (r.id || r.ID) === id);
-      const idColumn = currentRow?.ID ? 'ID' : 'id';
+      const currentRow = data.find((r) => (r.id || r.ID) === id);
+      const idColumn = currentRow?.ID ? "ID" : "id";
 
       // If screening or task changes, update PIC and history
-      if (field === 'hasil_screening' || field === 'nomor_task') {
-        const oldValue = currentRow ? currentRow[field] : '-';
-        
+      if (field === "hasil_screening" || field === "nomor_task") {
+        const oldValue = currentRow ? currentRow[field] : "-";
+
         // Don't update if value hasn't changed
         if (oldValue === value) return;
 
         let history = [];
         try {
-          history = JSON.parse(currentRow?.pic_history || '[]');
+          history = JSON.parse(currentRow?.pic_history || "[]");
         } catch (e) {
           history = [];
         }
 
         // --- LIMIT CHECK FOR NON-SUPERADMIN ---
         if (!isSuperAdmin) {
-          const actionLabel = field === 'hasil_screening' ? 'Status' : 'Task';
-          const updateCount = history.filter((h: any) => h.action.startsWith(`${actionLabel}:`)).length;
-          
+          const actionLabel = field === "hasil_screening" ? "Status" : "Task";
+          const updateCount = history.filter((h: any) =>
+            h.action.startsWith(`${actionLabel}:`),
+          ).length;
+
           if (updateCount >= 3) {
-            setLimitModal({ 
-              show: true, 
-              message: `Maaf, jatah update ${actionLabel} untuk data ini sudah habis (Maksimal 3x). Silakan hubungi Superadmin jika perlu perubahan lebih lanjut.` 
+            setLimitModal({
+              show: true,
+              message: `Maaf, jatah update ${actionLabel} untuk data ini sudah habis (Maksimal 3x). Silakan hubungi Superadmin jika perlu perubahan lebih lanjut.`,
             });
             // REVERT local state to oldValue
-            setData(prev => prev.map(r => 
-              (r.id === id || r.ID === id) ? { ...r, [field]: oldValue } : r
-            ));
-            if (searchResults) {
-              setSearchResults(prev => prev ? prev.map(r => 
-                (r.id === id || r.ID === id) ? { ...r, [field]: oldValue } : r
-              ) : null);
-            }
+            setData((prev) =>
+              prev.map((r) =>
+                r.id === id || r.ID === id ? { ...r, [field]: oldValue } : r,
+              ),
+            );
             return;
           }
         }
         // --------------------------------------
 
         updateData.pic = currentUsername;
-        const actionLabel = field === 'hasil_screening' ? 'Status' : 'Task';
-        const actionDetail = `${actionLabel}: ${oldValue || '-'} → ${value}`;
-        
+        const actionLabel = field === "hasil_screening" ? "Status" : "Task";
+        const actionDetail = `${actionLabel}: ${oldValue || "-"} → ${value}`;
+
         // Gunakan toLocaleString dengan timeZone Asia/Jakarta agar pasti WIB
-        const jktTime = new Date().toLocaleString("en-US", {timeZone: "Asia/Jakarta"});
+        const jktTime = new Date().toLocaleString("en-US", {
+          timeZone: "Asia/Jakarta",
+        });
         const localNow = new Date(jktTime);
-        const day = String(localNow.getDate()).padStart(2, '0');
-        const month = String(localNow.getMonth() + 1).padStart(2, '0');
+        const day = String(localNow.getDate()).padStart(2, "0");
+        const month = String(localNow.getMonth() + 1).padStart(2, "0");
         const year = String(localNow.getFullYear()).slice(-2);
-        const hours = String(localNow.getHours()).padStart(2, '0');
-        const minutes = String(localNow.getMinutes()).padStart(2, '0');
+        const hours = String(localNow.getHours()).padStart(2, "0");
+        const minutes = String(localNow.getMinutes()).padStart(2, "0");
         const timeStr = `${day}/${month}/${year} ${hours}:${minutes}`;
 
         // Tambah entry baru ke history
         history.unshift({
           name: currentUsername,
           action: actionDetail,
-          time: timeStr
+          time: timeStr,
         });
 
         // Simpan 15 history terakhir
         updateData.pic_history = JSON.stringify(history.slice(0, 15));
 
-        if (field === 'hasil_screening') {
+        if (field === "hasil_screening") {
           // Update screening_time juga dengan format YYYY-MM-DD HH:mm:ss
-          const isoNow = new Date().toLocaleString("en-ZA", {timeZone: "Asia/Jakarta"}).replace(',', '');
+          const isoNow = new Date()
+            .toLocaleString("en-ZA", { timeZone: "Asia/Jakarta" })
+            .replace(",", "");
           updateData.screening_time = isoNow;
         }
       }
@@ -858,87 +1003,75 @@ const RevofifPage = () => {
       if (error) throw error;
 
       // Update local state
-      const jktNow = new Date().toLocaleString("en-US", {timeZone: "Asia/Jakarta"});
+      const jktNow = new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Jakarta",
+      });
       const dNow = new Date(jktNow);
-      const dayStr = String(dNow.getDate()).padStart(2, '0');
-      const monthStr = String(dNow.getMonth() + 1).padStart(2, '0');
+      const dayStr = String(dNow.getDate()).padStart(2, "0");
+      const monthStr = String(dNow.getMonth() + 1).padStart(2, "0");
       const yearStr = String(dNow.getFullYear()).slice(-2);
-      const hoursStr = String(dNow.getHours()).padStart(2, '0');
-      const minStr = String(dNow.getMinutes()).padStart(2, '0');
+      const hoursStr = String(dNow.getHours()).padStart(2, "0");
+      const minStr = String(dNow.getMinutes()).padStart(2, "0");
       const timeStrLocal = `${dayStr}/${monthStr}/${yearStr} ${hoursStr}:${minStr}`;
-      const dbFormatTime = new Date().toLocaleString("en-ZA", {timeZone: "Asia/Jakarta"}).replace(',', '');
-      
-      setData(prev => prev.map(row => {
-        if ((row.id || row.ID) === id) {
-          const updatedRow = { 
-            ...row, 
-            [field]: value,
-            ...(field === 'hasil_screening' || field === 'nomor_task' ? { pic: currentUsername } : {}),
-            ...(field === 'hasil_screening' ? { screening_time: dbFormatTime } : {})
-          };
+      const dbFormatTime = new Date()
+        .toLocaleString("en-ZA", { timeZone: "Asia/Jakarta" })
+        .replace(",", "");
 
-          // Update history in local state too
-          if (field === 'hasil_screening' || field === 'nomor_task') {
-            let history = [];
-            try { history = JSON.parse(row.pic_history || '[]'); } catch(e) { history = []; }
-            
-            const oldValue = row[field] || '-';
-            const actionLabel = field === 'hasil_screening' ? 'Status' : 'Task';
-            const actionDetail = `${actionLabel}: ${oldValue || '-'} → ${value}`;
-
-            history.unshift({
-              name: currentUsername,
-              action: actionDetail,
-              time: timeStrLocal
-            });
-            updatedRow.pic_history = JSON.stringify(history.slice(0, 15));
-          }
-          return updatedRow;
-        }
-        return row;
-      }));
-      
-      if (searchResults) {
-        setSearchResults(prev => prev ? prev.map(row => {
+      setData((prev) =>
+        prev.map((row) => {
           if ((row.id || row.ID) === id) {
-            const updatedRow = { 
-              ...row, 
+            const updatedRow = {
+              ...row,
               [field]: value,
-              ...(field === 'hasil_screening' || field === 'nomor_task' ? { pic: currentUsername } : {}),
-              ...(field === 'hasil_screening' ? { screening_time: dbFormatTime } : {})
+              ...(field === "hasil_screening" || field === "nomor_task"
+                ? { pic: currentUsername }
+                : {}),
+              ...(field === "hasil_screening"
+                ? { screening_time: dbFormatTime }
+                : {}),
             };
-            if (field === 'hasil_screening' || field === 'nomor_task') {
+
+            // Update history in local state too
+            if (field === "hasil_screening" || field === "nomor_task") {
               let history = [];
-              try { history = JSON.parse(row.pic_history || '[]'); } catch(e) { history = []; }
-              const oldValue = row[field] || '-';
-              const actionLabel = field === 'hasil_screening' ? 'Status' : 'Task';
-              const actionDetail = `${actionLabel}: ${oldValue || '-'} → ${value}`;
+              try {
+                history = JSON.parse(row.pic_history || "[]");
+              } catch (e) {
+                history = [];
+              }
+
+              const oldValue = row[field] || "-";
+              const actionLabel =
+                field === "hasil_screening" ? "Status" : "Task";
+              const actionDetail = `${actionLabel}: ${oldValue || "-"} → ${value}`;
 
               history.unshift({
                 name: currentUsername,
                 action: actionDetail,
-                time: timeStrLocal
+                time: timeStrLocal,
               });
               updatedRow.pic_history = JSON.stringify(history.slice(0, 15));
             }
             return updatedRow;
           }
           return row;
-        }) : null);
-      }
+        }),
+      );
     } catch (err) {
-      console.error('Error updating pelamar:', err);
-      alert('Gagal mengupdate data. Pastikan kolom sudah ada di database Supabase Anda.');
+      console.error("Error updating pelamar:", err);
+      alert(
+        "Gagal mengupdate data. Pastikan kolom sudah ada di database Supabase Anda.",
+      );
     }
   };
 
   const clearHistory = async () => {
     if (!deleteHistoryId) return;
     const id = deleteHistoryId;
-    
+
     // Find if the row uses 'id' or 'ID'
-    const targetRow = data.find(r => (r.id || r.ID) === id);
-    const idColumn = targetRow?.ID ? 'ID' : 'id';
+    const targetRow = data.find((r) => (r.id || r.ID) === id);
+    const idColumn = targetRow?.ID ? "ID" : "id";
 
     try {
       const { error } = await supabase
@@ -949,34 +1082,38 @@ const RevofifPage = () => {
       if (error) throw error;
 
       // Update local state
-      setData(prev => prev.map(row => 
-        (row.id === id || row.ID === id) ? { ...row, pic: null, pic_history: null } : row
-      ));
-      if (searchResults) {
-        setSearchResults(prev => prev ? prev.map(row => 
-          (row.id === id || row.ID === id) ? { ...row, pic: null, pic_history: null } : row
-        ) : null);
-      }
+      setData((prev) =>
+        prev.map((row) =>
+          row.id === id || row.ID === id
+            ? { ...row, pic: null, pic_history: null }
+            : row,
+        ),
+      );
       setDeleteHistoryId(null);
     } catch (err: any) {
-      console.error('Error clearing history:', err);
-      alert(`Gagal menghapus history: ${err.message || 'Error tidak diketahui'}`);
+      console.error("Error clearing history:", err);
+      alert(
+        `Gagal menghapus history: ${err.message || "Error tidak diketahui"}`,
+      );
     }
   };
 
-  const formatDate = (dateString: string | null, includeTime: boolean = false) => {
-    if (!dateString || dateString === '-') return '-';
+  const formatDate = (
+    dateString: string | null,
+    includeTime: boolean = false,
+  ) => {
+    if (!dateString || dateString === "-") return "-";
     try {
       let ds = dateString;
       // Handle non-standard "M/D/YYYY T" format and aggressively strip timezone info
       // to prevent browser from adding +7 offset
-      ds = ds.replace(/[Zz]/g, '').replace(/\+\d{2}(:?\d{2})?$/, '');
-      
-      if (ds.includes('/') && ds.includes('T')) {
-        const [datePart, timePart] = ds.split('T');
-        const [m, d, y] = datePart.split('/');
+      ds = ds.replace(/[Zz]/g, "").replace(/\+\d{2}(:?\d{2})?$/, "");
+
+      if (ds.includes("/") && ds.includes("T")) {
+        const [datePart, timePart] = ds.split("T");
+        const [m, d, y] = datePart.split("/");
         if (m && d && y) {
-          ds = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${timePart}`;
+          ds = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T${timePart}`;
         }
       }
 
@@ -984,18 +1121,18 @@ const RevofifPage = () => {
       if (isNaN(d.getTime())) return dateString;
 
       const options: Intl.DateTimeFormatOptions = {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
+        day: "numeric",
+        month: "short",
+        year: "numeric",
       };
 
       if (includeTime) {
-        options.hour = '2-digit';
-        options.minute = '2-digit';
+        options.hour = "2-digit";
+        options.minute = "2-digit";
         options.hour12 = false;
       }
 
-      return d.toLocaleDateString('id-ID', options);
+      return d.toLocaleDateString("id-ID", options);
     } catch (e) {
       return dateString;
     }
@@ -1006,11 +1143,11 @@ const RevofifPage = () => {
       {/* Header */}
       <div className="page-header">
         <div className="title-group">
-          <h2>Data Pelamar {activeTable.replace('FLK_', '')}</h2>
+          <h2>Data Pelamar {activeTable.replace("FLK_", "")}</h2>
           <p>
             {hasActiveFilter
-              ? `${total.toLocaleString('id-ID')} dari ${totalRecords.toLocaleString('id-ID')} pelamar (filter aktif)`
-              : `Total ${totalRecords.toLocaleString('id-ID')} pelamar`}
+              ? `${total.toLocaleString("id-ID")} dari ${totalRecords.toLocaleString("id-ID")} pelamar (filter aktif)`
+              : `Total ${totalRecords.toLocaleString("id-ID")} pelamar`}
           </p>
         </div>
         <div className="action-group">
@@ -1019,15 +1156,25 @@ const RevofifPage = () => {
               <X size={16} /> Reset Filter
             </button>
           )}
-          <button className="btn-secondary" onClick={exportExcel} disabled={isExporting || loading}>
+          <button
+            className="btn-secondary"
+            onClick={exportExcel}
+            disabled={isExporting || loading}
+          >
             <Download size={18} />
             {isExporting
-              ? (exportProgress > 0 ? `${exportProgress.toLocaleString('id-ID')} baris...` : 'Mengekspor...')
-              : 'Export Excel'}
+              ? exportProgress > 0
+                ? `${exportProgress.toLocaleString("id-ID")} baris...`
+                : "Mengekspor..."
+              : "Export Excel"}
           </button>
-          <button className="btn-primary" onClick={fetchDashboardData} disabled={loading || isSearching}>
-            <RefreshCcw size={18} className={loading ? 'spin' : ''} />
-            {loading ? 'Loading...' : 'Refresh Data'}
+          <button
+            className="btn-primary"
+            onClick={fetchDashboardData}
+            disabled={loading}
+          >
+            <RefreshCcw size={18} className={loading ? "spin" : ""} />
+            {loading ? "Loading..." : "Refresh Data"}
           </button>
         </div>
       </div>
@@ -1040,12 +1187,23 @@ const RevofifPage = () => {
               <span className="label">TOTAL PELAMAR</span>
               <span className="total-badge">DATABASE</span>
             </div>
-            <span className="value">{hasActiveFilter ? total.toLocaleString('id-ID') : totalRecords.toLocaleString('id-ID')}</span>
-            <span className="sub-value">Dari {totalRecords.toLocaleString('id-ID')} basis data</span>
+            <span className="value">
+              {total.toLocaleString("id-ID")}
+            </span>
+            <span className="sub-value">
+              Dari {totalRecords.toLocaleString("id-ID")} basis data
+            </span>
           </div>
-          <div className="stat-icon cyan"><Users size={20} /></div>
+          <div className="stat-icon cyan">
+            <Users size={20} />
+          </div>
           <div className="progress-bar">
-            <div className="fill" style={{ width: `${totalRecords > 0 ? Math.round((total / totalRecords) * 100) : 0}%` }} />
+            <div
+              className="fill"
+              style={{
+                width: `100%`,
+              }}
+            />
           </div>
         </div>
 
@@ -1053,19 +1211,38 @@ const RevofifPage = () => {
           <div className="stat-info">
             <div className="stat-header">
               <span className="label">GENDER BREAKDOWN</span>
-              <span className="total-badge">{(maleCount + femaleCount).toLocaleString('id-ID')} TOTAL</span>
+              <span className="total-badge">
+                {total.toLocaleString("id-ID")} TOTAL
+              </span>
             </div>
-            <div className="gender-info">
-              <span className="value">{maleCount.toLocaleString('id-ID')} <small>L</small></span>
-              <span className="divider">/</span>
-              <span className="value">{femaleCount.toLocaleString('id-ID')} <small>P</small></span>
+            <div className="gender-values">
+              <span className="gender-v male">
+                {maleCount.toLocaleString("id-ID")} <small>L</small>
+              </span>
+              <span className="gender-v female">
+                {femaleCount.toLocaleString("id-ID")} <small>P</small>
+              </span>
             </div>
-            <span className="sub-value">{total > 0 ? Math.round((maleCount / total) * 100) : 0}% Laki-laki</span>
+            <span className="sub-value">
+              {total > 0 ? Math.round((maleCount / total) * 100) : 0}% Laki-laki
+            </span>
           </div>
-          <div className="stat-icon purple"><User size={20} /></div>
+          <div className="stat-icon purple">
+            <User size={20} />
+          </div>
           <div className="progress-bar double">
-            <div className="fill green" style={{ width: `${total > 0 ? Math.round((maleCount / total) * 100) : 0}%` }} />
-            <div className="fill purple" style={{ width: `${total > 0 ? Math.round((femaleCount / total) * 100) : 0}%` }} />
+            <div
+              className="fill green"
+              style={{
+                width: `${total > 0 ? Math.round((maleCount / total) * 100) : 0}%`,
+              }}
+            />
+            <div
+              className="fill purple"
+              style={{
+                width: `${total > 0 ? Math.round((femaleCount / total) * 100) : 0}%`,
+              }}
+            />
           </div>
         </div>
 
@@ -1073,19 +1250,38 @@ const RevofifPage = () => {
           <div className="stat-info">
             <div className="stat-header">
               <span className="label">EXPERIENCE BREAKDOWN</span>
-              <span className="total-badge">{(insights.freshGrads + insights.expCount).toLocaleString('id-ID')} TOTAL</span>
+              <span className="total-badge">
+                {total.toLocaleString("id-ID")} TOTAL
+              </span>
             </div>
-            <div className="gender-info">
-              <span className="value">{insights.freshGrads.toLocaleString('id-ID')} <small>Fresh</small></span>
-              <span className="divider">/</span>
-              <span className="value">{insights.expCount.toLocaleString('id-ID')} <small>Exp</small></span>
+            <div className="gender-values">
+              <span className="gender-v fresh">
+                {insights.freshGrads.toLocaleString("id-ID")} <small>Fresh</small>
+              </span>
+              <span className="gender-v exp">
+                {insights.expCount.toLocaleString("id-ID")} <small>Exp</small>
+              </span>
             </div>
-            <span className="sub-value">{total > 0 ? Math.round((insights.freshGrads / total) * 100) : 0}% Fresh Graduate</span>
+            <span className="sub-value">
+              {total > 0 ? Math.round((insights.freshGrads / total) * 100) : 0}% Fresh Graduate
+            </span>
           </div>
-          <div className="stat-icon orange"><TrendingUp size={20} /></div>
+          <div className="stat-icon orange">
+            <TrendingUp size={20} />
+          </div>
           <div className="progress-bar double">
-            <div className="fill orange" style={{ width: `${total > 0 ? Math.round((insights.freshGrads / total) * 100) : 0}%` }} />
-            <div className="fill cyan" style={{ width: `${total > 0 ? Math.round((insights.expCount / total) * 100) : 0}%` }} />
+            <div
+              className="fill orange"
+              style={{
+                width: `${total > 0 ? Math.round((insights.freshGrads / total) * 100) : 0}%`,
+              }}
+            />
+            <div
+              className="fill cyan"
+              style={{
+                width: `${total > 0 ? Math.round((insights.expCount / total) * 100) : 0}%`,
+              }}
+            />
           </div>
         </div>
 
@@ -1093,48 +1289,71 @@ const RevofifPage = () => {
           <div className="stat-info">
             <div className="stat-header">
               <span className="label">TOP SOURCES</span>
-              <span className="total-badge">{total.toLocaleString('id-ID')} TOTAL</span>
+              <span className="total-badge">
+                {total.toLocaleString("id-ID")} TOTAL
+              </span>
             </div>
             <div className="mini-list">
-              {insights.topSources.slice(0, 3).map(([name, count]: [string, number | unknown], i: number) => (
-                <div key={name} className="list-item">
-                  <div className="item-bar">
-                    <div className="item-fill pink" style={{ width: `${total > 0 ? Math.round(((count as number) / total) * 100) : 0}%` }} />
+              {insights.topSources
+                .slice(0, 3)
+                .map(([name, count]: [string, number | unknown], i: number) => (
+                  <div key={name} className="list-item">
+                    <div className="item-bar">
+                      <div
+                        className="item-fill pink"
+                        style={{
+                          width: `${total > 0 ? Math.round(((count as number) / total) * 100) : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="rank">{i + 1}</span>
+                    <span className="name truncate">{name}</span>
+                    <span className="count">
+                      {(count as number).toLocaleString("id-ID")}
+                    </span>
                   </div>
-                  <span className="rank">{i + 1}</span>
-                  <span className="name truncate">{name}</span>
-                  <span className="count">{(count as number).toLocaleString('id-ID')}</span>
-                </div>
-              ))}
-              {insights.topSources.length === 0 && <span className="value">-</span>}
+                ))}
             </div>
           </div>
-          <div className="stat-icon pink"><Share2 size={20} /></div>
+          <div className="stat-icon pink">
+            <Share2 size={20} />
+          </div>
         </div>
 
         <div className="stat-card glass-card">
           <div className="stat-info">
             <div className="stat-header">
               <span className="label">TOP POSITIONS</span>
-              <span className="total-badge">{total.toLocaleString('id-ID')} TOTAL</span>
+              <span className="total-badge">
+                {total.toLocaleString("id-ID")} TOTAL
+              </span>
             </div>
             <div className="mini-list">
-              {insights.topPositions.slice(0, 3).map(([name, count]: [string, number | unknown], i: number) => (
-                <div key={name} className="list-item">
-                  <div className="item-bar">
-                    <div className="item-fill yellow" style={{ width: `${total > 0 ? Math.round(((count as number) / total) * 100) : 0}%` }} />
+              {insights.topPositions
+                .slice(0, 3)
+                .map(([name, count]: [string, number | unknown], i: number) => (
+                  <div key={name} className="list-item">
+                    <div className="item-bar">
+                      <div
+                        className="item-fill yellow"
+                        style={{
+                          width: `${total > 0 ? Math.round(((count as number) / total) * 100) : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="rank">{i + 1}</span>
+                    <span className="name truncate">{name}</span>
+                    <span className="count">
+                      {(count as number).toLocaleString("id-ID")}
+                    </span>
                   </div>
-                  <span className="rank">{i + 1}</span>
-                  <span className="name truncate">{name}</span>
-                  <span className="count">{(count as number).toLocaleString('id-ID')}</span>
-                </div>
-              ))}
-              {insights.topPositions.length === 0 && <span className="value">-</span>}
+                ))}
             </div>
           </div>
-          <div className="stat-icon yellow"><Briefcase size={20} /></div>
+          <div className="stat-icon yellow">
+            <Briefcase size={20} />
+          </div>
         </div>
-
       </div>
 
       <div className="table-search-header">
@@ -1144,33 +1363,39 @@ const RevofifPage = () => {
             type="text"
             className="search-input"
             placeholder="Cari minat posisi..."
-            value={searchTerm || ''}
+            value={searchTerm || ""}
             onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            onKeyPress={(e) => e.key === "Enter" && handleSearch()}
           />
           {searchTerm && (
-            <button onClick={() => { setSearchTerm(''); handleSearch(); }} className="clear-search">
+            <button
+              onClick={() => {
+                setSearchTerm("");
+                handleSearch();
+              }}
+              className="clear-search"
+            >
               <X size={14} />
             </button>
           )}
         </div>
-        
+
         <div className="cv-filter-toggle">
-          <button 
-            className={`cv-toggle-btn ${cvFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setCvFilter('all')}
+          <button
+            className={`cv-toggle-btn ${cvFilter === "all" ? "active" : ""}`}
+            onClick={() => setCvFilter("all")}
           >
             Semua
           </button>
-          <button 
-            className={`cv-toggle-btn has-cv ${cvFilter === 'with' ? 'active' : ''}`}
-            onClick={() => setCvFilter('with')}
+          <button
+            className={`cv-toggle-btn has-cv ${cvFilter === "with" ? "active" : ""}`}
+            onClick={() => setCvFilter("with")}
           >
             ✓ CV
           </button>
-          <button 
-            className={`cv-toggle-btn no-cv ${cvFilter === 'without' ? 'active' : ''}`}
-            onClick={() => setCvFilter('without')}
+          <button
+            className={`cv-toggle-btn no-cv ${cvFilter === "without" ? "active" : ""}`}
+            onClick={() => setCvFilter("without")}
           >
             ✕ CV
           </button>
@@ -1180,17 +1405,31 @@ const RevofifPage = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th className="sticky-col sticky-col-1" style={{ width: '45px', textAlign: 'center' }}>
-                <input 
-                  type="checkbox" 
+              <th
+                className="sticky-col sticky-col-1"
+                style={{ width: "45px", textAlign: "center" }}
+              >
+                <input
+                  type="checkbox"
                   className="row-checkbox"
-                  title="Filter: Hanya tampilkan data yang dicentang"
                   checked={!!filters.showSelectedOnly}
-                  onChange={() => setFilters({ ...filters, showSelectedOnly: !filters.showSelectedOnly })}
+                  onChange={() =>
+                    setFilters({
+                      ...filters,
+                      showSelectedOnly: !filters.showSelectedOnly,
+                    })
+                  }
                 />
               </th>
-              <th className="sticky-col sticky-col-2" style={{ width: '45px' }}>#</th>
-              <th className="sticky-col sticky-col-3" style={{ width: '120px' }}>TGL LAMAR</th>
+              <th className="sticky-col sticky-col-2" style={{ width: "45px" }}>
+                #
+              </th>
+              <th
+                className="sticky-col sticky-col-3"
+                style={{ width: "120px" }}
+              >
+                TGL LAMAR
+              </th>
               <th>NAMA LENGKAP</th>
               <th>KONTAK</th>
               <th>SUMBER INFORMASI</th>
@@ -1208,44 +1447,79 @@ const RevofifPage = () => {
             </tr>
           </thead>
           <tbody>
-            {loading || isSearching ? (
-              <tr><td colSpan={16} className="loading-row">{isSearching ? 'Mencari data...' : 'Memuat data...'}</td></tr>
-            ) : paginatedData.length === 0 ? (
-              <tr><td colSpan={16} className="empty-row">Tidak ada data ditemukan</td></tr>
+            {loading ? (
+              <tr>
+                <td colSpan={16} className="loading-row">Memuat data...</td>
+              </tr>
+            ) : data.length === 0 ? (
+              <tr>
+                <td colSpan={16} className="empty-row">
+                  Tidak ada data ditemukan
+                </td>
+              </tr>
             ) : (
               paginatedData.map((row, idx) => {
                 const isSelected = selectedIds.has(row.id || row.ID);
                 return (
                   <tr key={row.id || idx}>
-                    <td className="sticky-col sticky-col-1" style={{ textAlign: 'center' }}>
-                      <input 
-                        type="checkbox" 
+                    <td
+                      className="sticky-col sticky-col-1"
+                      style={{ textAlign: "center" }}
+                    >
+                      <input
+                        type="checkbox"
                         className="row-checkbox"
                         checked={isSelected}
                         onChange={() => toggleSelection(row.id || row.ID)}
                       />
                     </td>
-                    <td className="row-num sticky-col sticky-col-2">{(currentPage - 1) * itemsPerPage + idx + 1}</td>
-                    <td className="sticky-col sticky-col-3" style={{ whiteSpace: 'nowrap', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <td className="row-num sticky-col sticky-col-2">
+                      {(currentPage - 1) * itemsPerPage + idx + 1}
+                    </td>
+                    <td
+                      className="sticky-col sticky-col-3"
+                      style={{
+                        whiteSpace: "nowrap",
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       {formatDate(getTimestamp(row, activeTable), true)}
                     </td>
                     <td>
                       <div className="cell-stack">
-                        <span className="cell-main">{row.nama_lengkap || '-'}</span>
+                        <span className="cell-main">
+                          {row.nama_lengkap || "-"}
+                        </span>
                       </div>
                     </td>
                     <td>
-                      <div className="cell-stack" style={{ maxWidth: '250px' }}>
-                        <span className="cell-main truncate" title={row.email_aktif || row.email || ''}>{row.email_aktif || row.email || '-'}</span>
-                        {row.no_wa && <span className="cell-sub">WA: {row.no_wa}</span>}
+                      <div className="cell-stack" style={{ maxWidth: "250px" }}>
+                        <span
+                          className="cell-main truncate"
+                          title={row.email_aktif || row.email || ""}
+                        >
+                          {row.email_aktif || row.email || "-"}
+                        </span>
+                        {row.no_wa && (
+                          <span className="cell-sub">WA: {row.no_wa}</span>
+                        )}
                       </div>
                     </td>
-                    <td><span className="source-tag">{row.sumber_informasi || '-'}</span></td>
+                    <td>
+                      <span className="source-tag">
+                        {row.sumber_informasi || "-"}
+                      </span>
+                    </td>
                     <td>
                       <div className="cell-stack">
-                        <span className="cell-main">{formatDate(row.tanggal_lahir)}</span>
+                        <span className="cell-main">
+                          {formatDate(row.tanggal_lahir)}
+                        </span>
                         {row.jenis_kelamin && (
-                          <span className={`gender-tag ${row.jenis_kelamin?.toLowerCase().includes('laki') ? 'male' : 'female'}`}>
+                          <span
+                            className={`gender-tag ${row.jenis_kelamin?.toLowerCase().includes("laki") ? "male" : "female"}`}
+                          >
                             {row.jenis_kelamin}
                           </span>
                         )}
@@ -1253,27 +1527,53 @@ const RevofifPage = () => {
                     </td>
                     <td>
                       <div className="cell-stack">
-                        <span className="cell-main">{row.pengalaman_kerja_terakhir || row.pengalaman_kerja || '-'}</span>
+                        <span className="cell-main">
+                          {row.pengalaman_kerja_terakhir ||
+                            row.pengalaman_kerja ||
+                            "-"}
+                        </span>
                       </div>
                     </td>
                     <td>
-                      {(row.minat_posisi_1 || row.minat_pekerjaan)
-                        ? <span className="position-tag">{row.minat_posisi_1 || row.minat_pekerjaan}</span>
-                        : '-'}
+                      {row.minat_posisi_1 || row.minat_pekerjaan ? (
+                        <span className="position-tag">
+                          {row.minat_posisi_1 || row.minat_pekerjaan}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
                     </td>
-                    <td><span className="province-tag">{getProvince(row, activeTable) || '-'}</span></td>
-                    <td><span className="city-tag">{getKota(row, activeTable) || '-'}</span></td>
+                    <td>
+                      <span className="province-tag">
+                        {getProvince(row, activeTable) || "-"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="city-tag">
+                        {getKota(row, activeTable) || "-"}
+                      </span>
+                    </td>
                     <td className="col-pendidikan">
                       <div className="cell-stack">
-                        <span className="cell-main">{row.pendidikan_terakhir || '-'}</span>
-                        {row.nama_sekolah && <span className="cell-sub">{row.nama_sekolah}</span>}
+                        <span className="cell-main">
+                          {row.pendidikan_terakhir || "-"}
+                        </span>
+                        {row.nama_sekolah && (
+                          <span className="cell-sub">{row.nama_sekolah}</span>
+                        )}
                       </div>
                     </td>
                     <td>
-                      <select 
-                        className={`screening-select ${row.hasil_screening?.toLowerCase() || ''}`}
-                        value={row.hasil_screening || ''}
-                        onChange={(e) => updatePelamar(row.id || row.ID, 'hasil_screening', e.target.value)}
+                      <select
+                        className={`screening-select ${row.hasil_screening?.toLowerCase() || ""}`}
+                        value={row.hasil_screening || ""}
+                        onChange={(e) =>
+                          updatePelamar(
+                            row.id || row.ID,
+                            "hasil_screening",
+                            e.target.value,
+                          )
+                        }
                       >
                         <option value="">- Select -</option>
                         <option value="PASSED">PASSED</option>
@@ -1281,90 +1581,135 @@ const RevofifPage = () => {
                         <option value="PENDING">PENDING</option>
                       </select>
                     </td>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <td
+                      style={{
+                        whiteSpace: "nowrap",
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       {formatDate(row.screening_time, true)}
                     </td>
                     <td>
-                      <input 
+                      <input
                         type="text"
                         className="task-input"
                         placeholder="..."
-                        value={row.nomor_task || ''}
+                        value={row.nomor_task || ""}
                         onChange={(e) => {
                           const val = e.target.value;
                           const rowId = row.id || row.ID;
-                          setData(prev => prev.map(r => (r.id || r.ID) === rowId ? { ...r, nomor_task: val } : r));
+                          setData((prev) =>
+                            prev.map((r) =>
+                              (r.id || r.ID) === rowId
+                                ? { ...r, nomor_task: val }
+                                : r,
+                            ),
+                          );
                         }}
-                        onBlur={(e) => updatePelamar(row.id || row.ID, 'nomor_task', e.target.value)}
+                        onBlur={(e) =>
+                          updatePelamar(
+                            row.id || row.ID,
+                            "nomor_task",
+                            e.target.value,
+                          )
+                        }
                       />
                     </td>
                     <td>
-                      <div 
-                        className="pic-cell" 
-                        style={{ zIndex: activeHistoryId === (row.id || row.ID) ? 10001 : 1 }}
+                      <div
+                        className="pic-cell"
+                        style={{
+                          zIndex:
+                            activeHistoryId === (row.id || row.ID) ? 10001 : 1,
+                        }}
                       >
-                        <span 
+                        <span
                           className="pic-tag"
                           onClick={(e) => {
                             e.stopPropagation();
                             const rowId = row.id || row.ID;
-                            setActiveHistoryId(activeHistoryId === rowId ? null : rowId);
+                            setActiveHistoryId(
+                              activeHistoryId === rowId ? null : rowId,
+                            );
                           }}
                         >
-                          {row.pic || '-'}
+                          {row.pic || "-"}
                         </span>
-                        {row.pic_history && activeHistoryId === (row.id || row.ID) && (
-                          <div className="pic-history-dropdown">
-                            <div className="history-header">
-                              <div className="header-left">
-                                Log Aktivitas ({JSON.parse(row.pic_history).length})
-                              </div>
-                              <div className="header-right">
-                                {user?.username === 'superadmin' && (
-                                  <button 
-                                    className="clear-history-btn"
+                        {row.pic_history &&
+                          activeHistoryId === (row.id || row.ID) && (
+                            <div className="pic-history-dropdown">
+                              <div className="history-header">
+                                <div className="header-left">
+                                  Log Aktivitas (
+                                  {JSON.parse(row.pic_history).length})
+                                </div>
+                                <div className="header-right">
+                                  {user?.username === "superadmin" && (
+                                    <button
+                                      className="clear-history-btn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteHistoryId(row.id || row.ID);
+                                      }}
+                                      title="Hapus History"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  )}
+                                  <button
+                                    className="close-history-btn"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setDeleteHistoryId(row.id || row.ID);
+                                      setActiveHistoryId(null);
                                     }}
-                                    title="Hapus History"
                                   >
-                                    <Trash2 size={12} />
+                                    <X size={12} />
                                   </button>
-                                )}
-                                <button 
-                                  className="close-history-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveHistoryId(null);
-                                  }}
-                                >
-                                  <X size={12} />
-                                </button>
-                              </div>
-                            </div>
-                            {JSON.parse(row.pic_history).map((item: any, i: number) => (
-                              <div key={i} className="hst-item">
-                                <div className="hst-left">
-                                  <span className="hst-time">{item.time}</span>
-                                  <span className="hst-name">{item.name}</span>
-                                  {i === 0 && <span className="hst-latest">TERBARU</span>}
                                 </div>
-                                <div className="hst-action">{item.action}</div>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                              {JSON.parse(row.pic_history).map(
+                                (item: any, i: number) => (
+                                  <div key={i} className="hst-item">
+                                    <div className="hst-left">
+                                      <span className="hst-time">
+                                        {item.time}
+                                      </span>
+                                      <span className="hst-name">
+                                        {item.name}
+                                      </span>
+                                      {i === 0 && (
+                                        <span className="hst-latest">
+                                          TERBARU
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="hst-action">
+                                      {item.action}
+                                    </div>
+                                  </div>
+                                ),
+                              )}
+                            </div>
+                          )}
                       </div>
                     </td>
                     <td>
                       {(() => {
-                        const cvUrl = activeTable === 'FLK_Nasional' ? (row.upload_cv || row.file_url) : row.upload_cv;
+                        const cvUrl =
+                          activeTable === "FLK_Nasional"
+                            ? row.upload_cv || row.file_url
+                            : row.upload_cv;
                         return cvUrl ? (
-                          <button onClick={() => setSelectedCv(cvUrl)} className="cv-btn">
+                          <button
+                            onClick={() => setSelectedCv(cvUrl)}
+                            className="cv-btn"
+                          >
                             <ExternalLink size={14} /> CV
                           </button>
-                        ) : <span className="cell-sub">-</span>;
+                        ) : (
+                          <span className="cell-sub">-</span>
+                        );
                       })()}
                     </td>
                   </tr>
@@ -1383,7 +1728,7 @@ const RevofifPage = () => {
               <span>Tampilkan:</span>
               <select
                 value={itemsPerPage}
-                onChange={e => {
+                onChange={(e) => {
                   setItemsPerPage(Number(e.target.value));
                   setCurrentPage(1);
                 }}
@@ -1395,21 +1740,25 @@ const RevofifPage = () => {
               </select>
             </div>
             <div className="pagination-text">
-              {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, tableFilteredData.length)} dari {tableFilteredData.length} data
+              {(currentPage - 1) * itemsPerPage + 1} -{" "}
+              {Math.min(currentPage * itemsPerPage, totalRecords)}{" "}
+              dari {totalRecords.toLocaleString("id-ID")} data
             </div>
           </div>
           <div className="pagination-controls">
             <button
               className="page-btn"
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="page-current">Halaman {currentPage} dari {totalPages}</span>
+            <span className="page-current">
+              Halaman {currentPage} dari {totalPages}
+            </span>
             <button
               className="page-btn"
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
             >
               <ChevronRight size={16} />
@@ -1421,19 +1770,25 @@ const RevofifPage = () => {
       {/* CV Modal */}
       {selectedCv && (
         <div className="cv-modal-overlay" onClick={() => setSelectedCv(null)}>
-          <div className="cv-modal-content glass-card" onClick={e => e.stopPropagation()}>
+          <div
+            className="cv-modal-content glass-card"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="cv-modal-header">
               <h3>Dokumen CV</h3>
               <div className="cv-modal-actions">
                 <a
                   href={(() => {
                     const url = selectedCv;
-                    if (url.includes('drive.google.com')) {
-                      const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-                      if (idMatch) return `https://drive.google.com/uc?export=download&id=${idMatch[1]}`;
+                    if (url.includes("drive.google.com")) {
+                      const idMatch =
+                        url.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+                        url.match(/id=([a-zA-Z0-9_-]+)/);
+                      if (idMatch)
+                        return `https://drive.google.com/uc?export=download&id=${idMatch[1]}`;
                     }
-                    if (url.includes('supabase.co')) {
-                      const sep = url.includes('?') ? '&' : '?';
+                    if (url.includes("supabase.co")) {
+                      const sep = url.includes("?") ? "&" : "?";
                       return `${url}${sep}download=CV_Pelamar.pdf`;
                     }
                     return url;
@@ -1442,11 +1797,14 @@ const RevofifPage = () => {
                   target="_blank"
                   rel="noreferrer"
                   className="btn-primary"
-                  style={{ padding: '6px 12px', fontSize: '12px' }}
+                  style={{ padding: "6px 12px", fontSize: "12px" }}
                 >
                   <Download size={14} /> Download
                 </a>
-                <button className="btn-close" onClick={() => setSelectedCv(null)}>
+                <button
+                  className="btn-close"
+                  onClick={() => setSelectedCv(null)}
+                >
                   <X size={18} />
                 </button>
               </div>
@@ -1455,11 +1813,16 @@ const RevofifPage = () => {
               <iframe
                 src={(() => {
                   const url = selectedCv;
-                  if (url.includes('drive.google.com')) {
-                    let embedUrl = url.replace(/\/view.*$/, '/preview');
+                  if (url.includes("drive.google.com")) {
+                    let embedUrl = url.replace(/\/view.*$/, "/preview");
                     const idMatch = embedUrl.match(/id=([a-zA-Z0-9_-]+)/);
-                    if (idMatch) return `https://drive.google.com/file/d/${idMatch[1]}/preview`;
-                    if (!embedUrl.endsWith('/preview') && embedUrl.includes('/file/d/')) return `${embedUrl}/preview`;
+                    if (idMatch)
+                      return `https://drive.google.com/file/d/${idMatch[1]}/preview`;
+                    if (
+                      !embedUrl.endsWith("/preview") &&
+                      embedUrl.includes("/file/d/")
+                    )
+                      return `${embedUrl}/preview`;
                     return embedUrl;
                   }
                   return url;
@@ -1487,9 +1850,22 @@ const RevofifPage = () => {
           flex-wrap: wrap;
           gap: 12px;
         }
-        .title-group h2 { font-size: 16px; font-weight: 700; margin-bottom: 0px; line-height: 1.2; }
-        .title-group p { color: var(--text-muted); font-size: 12px; line-height: 1.2; }
-        .action-group { display: flex; gap: 8px; align-items: center; }
+        .title-group h2 {
+          font-size: 16px;
+          font-weight: 700;
+          margin-bottom: 0px;
+          line-height: 1.2;
+        }
+        .title-group p {
+          color: var(--text-muted);
+          font-size: 12px;
+          line-height: 1.2;
+        }
+        .action-group {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
 
         .btn-secondary {
           background: var(--glass-bg);
@@ -1497,104 +1873,247 @@ const RevofifPage = () => {
           color: var(--text-main);
           padding: 6px 12px;
           border-radius: 6px;
-          display: flex; align-items: center; gap: 6px;
-          cursor: pointer; font-weight: 500; font-size: 13px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          font-weight: 500;
+          font-size: 13px;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .btn-secondary:hover:not(:disabled) { 
-          background: rgba(255, 255, 255, 0.08); 
+        .btn-secondary:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.08);
           border-color: rgba(255, 255, 255, 0.2);
           transform: translateY(-1px);
         }
-        .btn-secondary:active:not(:disabled) { transform: translateY(0) scale(0.98); }
-        .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-secondary:active:not(:disabled) {
+          transform: translateY(0) scale(0.98);
+        }
+        .btn-secondary:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
 
         .btn-reset {
           background: transparent;
-          border: 1px solid rgba(239,68,68,0.4);
+          border: 1px solid rgba(239, 68, 68, 0.4);
           color: #f87171;
-          padding: 8px 12px; border-radius: 8px;
-          display: flex; align-items: center; gap: 6px;
-          cursor: pointer; font-size: 13px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          padding: 8px 12px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          font-size: 13px;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .btn-reset:hover { 
-          background: rgba(239,68,68,0.15); 
+        .btn-reset:hover {
+          background: rgba(239, 68, 68, 0.15);
           transform: translateY(-2px);
         }
-        .btn-reset:active { transform: translateY(0) scale(0.96); }
-        .filter-card { padding: 12px 20px; margin-bottom: 16px; }
+        .btn-reset:active {
+          transform: translateY(0) scale(0.96);
+        }
+        .filter-card {
+          padding: 12px 20px;
+          margin-bottom: 16px;
+        }
         .filter-header {
-          display: flex; align-items: center; gap: 10px;
-          margin-bottom: 12px; font-weight: 600; font-size: 13px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 12px;
+          font-weight: 600;
+          font-size: 13px;
         }
         .status-indicator {
           margin-left: auto;
-          display: flex; align-items: center; gap: 8px;
-          font-size: 11px; color: var(--success); font-weight: 400;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 11px;
+          color: var(--success);
+          font-weight: 400;
         }
         .status-indicator .dot {
-          width: 6px; height: 6px;
-          background: var(--success); border-radius: 50%;
+          width: 6px;
+          height: 6px;
+          background: var(--success);
+          border-radius: 50%;
           box-shadow: 0 0 6px var(--success);
           animation: pulse 2s infinite;
         }
-        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-        @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
-        :global(.spin) { animation: spin 1s linear infinite; }
- 
-        .filter-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px 20px; }
-        .filter-item { display: flex; flex-direction: column; gap: 4px; }
-        .filter-item label {
-          font-size: 10px; color: var(--text-muted);
-          display: flex; align-items: center; gap: 6px;
-          text-transform: uppercase; letter-spacing: 0.05em;
+        @keyframes pulse {
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.4;
+          }
         }
-        :global(.icon-blue) { color: #60a5fa; }
-        :global(.icon-red) { color: #f87171; }
-        :global(.icon-amber) { color: #fbbf24; }
-        :global(.icon-green) { color: #34d399; }
-        :global(.icon-purple) { color: #a78bfa; }
-        :global(.icon-cyan) { color: #22d3ee; }
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        :global(.spin) {
+          animation: spin 1s linear infinite;
+        }
+
+        .filter-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px 20px;
+        }
+        .filter-item {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .filter-item label {
+          font-size: 10px;
+          color: var(--text-muted);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        :global(.icon-blue) {
+          color: #60a5fa;
+        }
+        :global(.icon-red) {
+          color: #f87171;
+        }
+        :global(.icon-amber) {
+          color: #fbbf24;
+        }
+        :global(.icon-green) {
+          color: #34d399;
+        }
+        :global(.icon-purple) {
+          color: #a78bfa;
+        }
+        :global(.icon-cyan) {
+          color: #22d3ee;
+        }
         .filter-item select {
-          background: var(--bg-color); border: 1px solid var(--border-color);
-          color: var(--text-main); padding: 6px 10px; border-radius: 6px;
-          outline: none; cursor: pointer; transition: border-color 0.2s;
+          background: var(--bg-color);
+          border: 1px solid var(--border-color);
+          color: var(--text-main);
+          padding: 6px 10px;
+          border-radius: 6px;
+          outline: none;
+          cursor: pointer;
+          transition: border-color 0.2s;
           font-size: 13px;
         }
-        .filter-item select:focus { border-color: var(--primary-accent); }
+        .filter-item select:focus {
+          border-color: var(--primary-accent);
+        }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; margin-bottom: 16px; }
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 10px;
+          margin-bottom: 16px;
+        }
         .stat-card {
           padding: 12px 14px;
-          display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
           overflow: hidden;
-          transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease;
+          transition:
+            transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+            box-shadow 0.4s ease;
         }
         .stat-card:hover {
           transform: translateY(-4px);
           box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
         }
-        .stat-info { display: flex; flex-direction: column; flex: 1; min-width: 0; margin-right: 8px; }
-        .stat-info .label { font-size: 9px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
-        .stat-info .value { font-size: 20px; font-weight: 700; margin-top: 2px; color: var(--text-main); }
-        .stat-info .value.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-        .stat-info .sub-value { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-        .stat-header { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 4px; }
-        .total-badge { 
-          font-size: 9px; font-weight: 700; color: var(--text-muted); 
-          background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.05); white-space: nowrap;
+        .stat-info {
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          min-width: 0;
+          margin-right: 8px;
         }
-        .stat-info .value small { font-size: 10px; opacity: 0.6; font-weight: 400; text-transform: uppercase; }
-        .gender-info { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
-        .gender-info .divider { opacity: 0.2; }
-        
-        .mini-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; width: 100%; }
-        .list-item { 
-          display: flex; 
-          align-items: center; 
-          gap: 10px; 
-          font-size: 11px; 
-          color: var(--text-main); 
+        .stat-info .label {
+          font-size: 9px;
+          font-weight: 700;
+          color: var(--text-muted);
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+        }
+        .stat-info .value {
+          font-size: 20px;
+          font-weight: 700;
+          margin-top: 2px;
+          color: var(--text-main);
+        }
+        .stat-info .value.truncate {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        }
+        .stat-info .sub-value {
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-top: 2px;
+        }
+        .stat-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          width: 100%;
+          margin-bottom: 4px;
+        }
+        .total-badge {
+          font-size: 9px;
+          font-weight: 700;
+          color: var(--text-muted);
+          background: rgba(255, 255, 255, 0.05);
+          padding: 2px 8px;
+          border-radius: 10px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          white-space: nowrap;
+        }
+        .stat-info .value small {
+          font-size: 10px;
+          opacity: 0.6;
+          font-weight: 400;
+          text-transform: uppercase;
+        }
+        .gender-info {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 2px;
+        }
+        .gender-info .divider {
+          opacity: 0.2;
+        }
+
+        .mini-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-top: 8px;
+          width: 100%;
+        }
+        .list-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 11px;
+          color: var(--text-main);
           position: relative;
           padding: 4px 6px;
           border-radius: 4px;
@@ -1611,35 +2130,108 @@ const RevofifPage = () => {
           opacity: 0.15;
           transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .item-fill.pink { background: #ec4899; }
-        .item-fill.yellow { background: #eab308; }
-        
-        .list-item .rank { 
-          position: relative; z-index: 1;
-          width: 16px; height: 16px; 
-          background: var(--glass-border); 
-          border-radius: 4px; 
-          display: flex; align-items: center; justify-content: center; 
-          font-size: 9px; font-weight: 700; color: var(--text-main);
+        .item-fill.pink {
+          background: #ec4899;
         }
-        .list-item .name { position: relative; z-index: 1; flex: 1; font-weight: 500; color: var(--text-main); }
-        .list-item .count { position: relative; z-index: 1; font-weight: 700; font-family: monospace; opacity: 0.8; color: var(--text-main); }
-        
-        .stat-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .stat-icon.cyan { background: rgba(0,158,217,0.1); color: #009ed9; }
-        .stat-icon.green { background: rgba(16,185,129,0.1); color: #10b981; }
-        .stat-icon.purple { background: rgba(139,92,246,0.1); color: #8b5cf6; }
-        .stat-icon.orange { background: rgba(249,115,22,0.1); color: #f97316; }
-        .stat-icon.pink { background: rgba(236,72,153,0.1); color: #ec4899; }
-        .stat-icon.yellow { background: rgba(234,179,8,0.1); color: #eab308; }
-        .stat-icon.blue { background: rgba(59,130,246,0.1); color: #3b82f6; }
+        .item-fill.yellow {
+          background: #eab308;
+        }
 
-        .progress-bar { width:100%; height:4px; background: var(--glass-bg); border-radius:2px; margin-top:8px; display: flex; }
-        .progress-bar.double { gap: 2px; background: transparent; }
-        .fill { height:100%; background:#009ed9; border-radius:2px; transition: width 0.5s ease; }
-        .fill.green { background:#10b981; }
-        .fill.purple { background:#8b5cf6; }
-        .fill.orange { background:#f97316; }
+        .list-item .rank {
+          position: relative;
+          z-index: 1;
+          width: 16px;
+          height: 16px;
+          background: var(--glass-border);
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 9px;
+          font-weight: 700;
+          color: var(--text-main);
+        }
+        .list-item .name {
+          position: relative;
+          z-index: 1;
+          flex: 1;
+          font-weight: 500;
+          color: var(--text-main);
+        }
+        .list-item .count {
+          position: relative;
+          z-index: 1;
+          font-weight: 700;
+          font-family: monospace;
+          opacity: 0.8;
+          color: var(--text-main);
+        }
+
+        .stat-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .stat-icon.cyan {
+          background: rgba(0, 158, 217, 0.1);
+          color: #009ed9;
+        }
+        .stat-icon.green {
+          background: rgba(16, 185, 129, 0.1);
+          color: #10b981;
+        }
+        .stat-icon.purple {
+          background: rgba(139, 92, 246, 0.1);
+          color: #8b5cf6;
+        }
+        .stat-icon.orange {
+          background: rgba(249, 115, 22, 0.1);
+          color: #f97316;
+        }
+        .stat-icon.pink {
+          background: rgba(236, 72, 153, 0.1);
+          color: #ec4899;
+        }
+        .stat-icon.yellow {
+          background: rgba(234, 179, 8, 0.1);
+          color: #eab308;
+        }
+        .stat-icon.blue {
+          background: rgba(59, 130, 246, 0.1);
+          color: #3b82f6;
+        }
+
+        .progress-bar {
+          width: 100%;
+          height: 4px;
+          background: var(--glass-bg);
+          border-radius: 2px;
+          margin-top: 8px;
+          display: flex;
+        }
+        .progress-bar.double {
+          gap: 2px;
+          background: transparent;
+        }
+        .fill {
+          height: 100%;
+          background: #009ed9;
+          border-radius: 2px;
+          transition: width 0.5s ease;
+        }
+        .fill.green {
+          background: #10b981;
+        }
+        .fill.purple {
+          background: #8b5cf6;
+        }
+        .fill.orange {
+          background: #f97316;
+        }
 
         /* Table & Search Styles */
         .table-search-header {
@@ -1709,26 +2301,26 @@ const RevofifPage = () => {
         }
         .cv-toggle-btn:hover {
           color: var(--text-main);
-          background: rgba(255,255,255,0.05);
+          background: rgba(255, 255, 255, 0.05);
         }
         .cv-toggle-btn.active {
           background: var(--primary-accent);
           color: #fff;
-          box-shadow: 0 2px 8px rgba(0,158,217,0.35);
+          box-shadow: 0 2px 8px rgba(0, 158, 217, 0.35);
         }
         .cv-toggle-btn.has-cv.active {
           background: #10b981;
           color: #fff;
-          box-shadow: 0 2px 8px rgba(16,185,129,0.35);
+          box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
         }
         .cv-toggle-btn.no-cv.active {
           background: #ef4444;
           color: #fff;
-          box-shadow: 0 2px 8px rgba(239,68,68,0.35);
+          box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
         }
 
-        .table-container { 
-          overflow: auto; 
+        .table-container {
+          overflow: auto;
           max-height: calc(100vh - 250px);
           min-height: 500px;
           border-radius: 12px;
@@ -1736,34 +2328,36 @@ const RevofifPage = () => {
           border: 1px solid var(--border-color);
           position: relative;
         }
-        .data-table { 
-          width: 100%; 
-          min-width: 1600px; 
-          border-collapse: separate; 
+        .data-table {
+          width: 100%;
+          min-width: 1600px;
+          border-collapse: separate;
           border-spacing: 0;
-          text-align: left; 
-          font-size: 12px; 
+          text-align: left;
+          font-size: 12px;
           table-layout: auto;
         }
         .data-table th {
-          padding: 10px 8px; 
-          font-size: 10px; 
+          padding: 10px 8px;
+          font-size: 10px;
           font-weight: 600;
-          color: var(--text-muted); 
+          color: var(--text-muted);
           border-bottom: 1px solid var(--border-color);
-          text-transform: uppercase; 
+          text-transform: uppercase;
           white-space: nowrap;
         }
-        .data-table td { 
-          padding: 10px 8px; 
-          border-bottom: 1px solid var(--border-color); 
-          vertical-align: top; 
+        .data-table td {
+          padding: 10px 8px;
+          border-bottom: 1px solid var(--border-color);
+          vertical-align: top;
         }
-        .data-table tbody tr { transition: all 0.2s ease; }
-        .data-table tbody tr:hover td { 
-          background: var(--active-bg); 
+        .data-table tbody tr {
+          transition: all 0.2s ease;
         }
-        
+        .data-table tbody tr:hover td {
+          background: var(--active-bg);
+        }
+
         /* ===== STICKY COLUMNS REFACTORED ===== */
         :global(.sticky-col) {
           position: sticky !important;
@@ -1772,13 +2366,13 @@ const RevofifPage = () => {
           /* Ensure no transparency leak */
           background-clip: padding-box;
         }
-        
+
         /* Sticky Header + Left */
         :global(thead .sticky-col) {
           z-index: 40 !important;
           top: 0 !important;
         }
-        
+
         /* General Sticky Header */
         :global(thead th) {
           position: sticky !important;
@@ -1787,69 +2381,123 @@ const RevofifPage = () => {
           background-color: var(--card-bg) !important;
           border-bottom: 2px solid var(--border-color) !important;
           /* Heavy duty leak prevention */
-          box-shadow: 0 -1px 0 0 var(--card-bg), 0 2px 4px rgba(0,0,0,0.3) !important;
+          box-shadow:
+            0 -1px 0 0 var(--card-bg),
+            0 2px 4px rgba(0, 0, 0, 0.3) !important;
           outline: 1px solid var(--card-bg);
           background-clip: padding-box;
         }
-        
-        :global(.sticky-col-1) { left: 0 !important; width: 45px; min-width: 45px; }
-        :global(.sticky-col-2) { left: 45px !important; width: 45px; min-width: 45px; }
-        :global(.sticky-col-3) { 
-          left: 90px !important; 
-          width: 120px; min-width: 120px;
-          border-right: 2px solid rgba(0,158,217,0.5) !important;
-          box-shadow: 8px 0 15px -5px rgba(0,0,0,0.5) !important;
+
+        :global(.sticky-col-1) {
+          left: 0 !important;
+          width: 45px;
+          min-width: 45px;
+        }
+        :global(.sticky-col-2) {
+          left: 45px !important;
+          width: 45px;
+          min-width: 45px;
+        }
+        :global(.sticky-col-3) {
+          left: 90px !important;
+          width: 120px;
+          min-width: 120px;
+          border-right: 2px solid rgba(0, 158, 217, 0.5) !important;
+          box-shadow: 8px 0 15px -5px rgba(0, 0, 0, 0.5) !important;
         }
 
         /* Forced Light Mode overrides */
-        :global(html[data-theme='light'] .sticky-col),
-        :global(html[data-theme='light'] thead th) {
+        :global(html[data-theme="light"] .sticky-col),
+        :global(html[data-theme="light"] thead th) {
           background-color: #ffffff !important;
         }
-        
+
         /* Sticky hover: must be SOLID but theme-aware */
         :global(.data-table tbody tr:hover .sticky-col) {
-          background-image: linear-gradient(var(--active-bg), var(--active-bg)) !important;
+          background-image: linear-gradient(
+            var(--active-bg),
+            var(--active-bg)
+          ) !important;
           background-color: var(--card-bg) !important;
           z-index: 11 !important;
         }
 
         /* Light mode specific adjustments for borders/shadows */
-        :global(html[data-theme='light']) .data-table th,
-        :global(html[data-theme='light']) .data-table td {
+        :global(html[data-theme="light"]) .data-table th,
+        :global(html[data-theme="light"]) .data-table td {
           border-bottom: 1px solid #e2e8f0;
         }
-        :global(html[data-theme='light']) .data-table thead th:nth-child(3),
-        :global(html[data-theme='light']) .data-table tbody td:nth-child(3) {
-          border-right: 2px solid rgba(0,158,217,0.15);
-          box-shadow: 2px 0 8px rgba(0,0,0,0.05);
+        :global(html[data-theme="light"]) .data-table thead th:nth-child(3),
+        :global(html[data-theme="light"]) .data-table tbody td:nth-child(3) {
+          border-right: 2px solid rgba(0, 158, 217, 0.15);
+          box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
         }
 
-        .row-num { color: var(--text-muted); font-size: 11px; width: 30px; text-align: center; }
-        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+        .row-num {
+          color: var(--text-muted);
+          font-size: 11px;
+          width: 30px;
+          text-align: center;
+        }
+        .truncate {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          display: block;
+        }
 
-        .cell-stack { display: flex; flex-direction: column; gap: 2px; }
-        .cell-main { font-weight: 500; color: var(--text-main); line-height: 1.2; }
-        .cell-sub { font-size: 10px; color: var(--text-muted); line-height: 1.2; }
+        .cell-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .cell-main {
+          font-weight: 500;
+          color: var(--text-main);
+          line-height: 1.2;
+        }
+        .cell-sub {
+          font-size: 10px;
+          color: var(--text-muted);
+          line-height: 1.2;
+        }
 
         .source-tag {
-          font-size: 11px; color: var(--text-muted);
-          max-width: 120px; display: block;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          font-size: 11px;
+          color: var(--text-muted);
+          max-width: 120px;
+          display: block;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .gender-tag {
-          display: inline-block; font-size: 10px; font-weight: 600;
-          padding: 1px 6px; border-radius: 4px;
+          display: inline-block;
+          font-size: 10px;
+          font-weight: 600;
+          padding: 1px 6px;
+          border-radius: 4px;
         }
-        .gender-tag.male { background: rgba(59,130,246,0.12); color: #60a5fa; }
-        .gender-tag.female { background: rgba(236,72,153,0.12); color: #f472b6; }
+        .gender-tag.male {
+          background: rgba(59, 130, 246, 0.12);
+          color: #60a5fa;
+        }
+        .gender-tag.female {
+          background: rgba(236, 72, 153, 0.12);
+          color: #f472b6;
+        }
 
         .duration-tag {
-          display: inline-block; font-size: 10px; font-weight: 500;
-          color: #fbbf24; background: rgba(251,191,36,0.1);
-          padding: 1px 6px; border-radius: 4px;
+          display: inline-block;
+          font-size: 10px;
+          font-weight: 500;
+          color: #fbbf24;
+          background: rgba(251, 191, 36, 0.1);
+          padding: 1px 6px;
+          border-radius: 4px;
         }
-        .source-tag, .province-tag {
+        .source-tag,
+        .province-tag {
           display: inline-block;
           padding: 3px 8px;
           border-radius: 4px;
@@ -1868,9 +2516,12 @@ const RevofifPage = () => {
         }
         .position-tag {
           display: inline-block;
-          background: rgba(0,158,217,0.1); color: #009ed9;
-          padding: 3px 8px; border-radius: 4px;
-          font-size: 11px; font-weight: 600;
+          background: rgba(0, 158, 217, 0.1);
+          color: #009ed9;
+          padding: 3px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 600;
           max-width: 150px;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -1903,9 +2554,21 @@ const RevofifPage = () => {
           width: 85px;
           transition: all 0.2s;
         }
-        .screening-select.passed { background: rgba(16, 185, 129, 0.2); color: #10b981; border-color: rgba(16, 185, 129, 0.4); }
-        .screening-select.failed { background: rgba(239, 68, 68, 0.2); color: #ef4444; border-color: rgba(239, 68, 68, 0.4); }
-        .screening-select.pending { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); }
+        .screening-select.passed {
+          background: rgba(16, 185, 129, 0.2);
+          color: #10b981;
+          border-color: rgba(16, 185, 129, 0.4);
+        }
+        .screening-select.failed {
+          background: rgba(239, 68, 68, 0.2);
+          color: #ef4444;
+          border-color: rgba(239, 68, 68, 0.4);
+        }
+        .screening-select.pending {
+          background: rgba(245, 158, 11, 0.2);
+          color: #f59e0b;
+          border-color: rgba(245, 158, 11, 0.4);
+        }
 
         .task-input {
           padding: 4px 8px;
@@ -1920,7 +2583,7 @@ const RevofifPage = () => {
         }
         .task-input:focus {
           border-color: var(--primary-accent);
-          background: rgba(255,255,255,0.05);
+          background: rgba(255, 255, 255, 0.05);
         }
         .col-pendidikan {
           max-width: 180px;
@@ -1933,28 +2596,39 @@ const RevofifPage = () => {
         }
 
         .cv-btn {
-          display: inline-flex; align-items: center; gap: 5px;
-          background: var(--glass-bg); color: var(--text-main);
-          padding: 4px 10px; border-radius: 6px; font-size: 12px;
-          border: 1px solid var(--border-color); transition: all 0.2s; white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: var(--glass-bg);
+          color: var(--text-main);
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          border: 1px solid var(--border-color);
+          transition: all 0.2s;
+          white-space: nowrap;
           cursor: pointer;
         }
-        .cv-btn:hover { background: rgba(0,158,217,0.1); border-color: #009ed9; color: #009ed9; }
+        .cv-btn:hover {
+          background: rgba(0, 158, 217, 0.1);
+          border-color: #009ed9;
+          color: #009ed9;
+        }
 
         .pic-tag {
           font-size: 11px;
           padding: 2px 6px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 4px;
           color: var(--text-muted);
           white-space: nowrap;
           cursor: pointer;
           transition: all 0.2s;
         }
-        
+
         .pic-tag:hover {
-          background: rgba(255,255,255,0.1);
+          background: rgba(255, 255, 255, 0.1);
           color: var(--primary-accent);
         }
 
@@ -1974,7 +2648,7 @@ const RevofifPage = () => {
           border-radius: 10px;
           padding: 12px;
           width: 320px;
-          box-shadow: 0 20px 50px rgba(0,0,0,1);
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 1);
           z-index: 10000;
           display: block;
           pointer-events: auto;
@@ -1987,7 +2661,7 @@ const RevofifPage = () => {
           letter-spacing: 1px;
           text-transform: uppercase;
           margin-bottom: 10px;
-          border-bottom: 1px solid rgba(255,255,255,0.1);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           padding-bottom: 6px;
           display: flex;
           justify-content: space-between;
@@ -2000,7 +2674,8 @@ const RevofifPage = () => {
           align-items: center;
         }
 
-        .clear-history-btn, .close-history-btn {
+        .clear-history-btn,
+        .close-history-btn {
           background: rgba(255, 255, 255, 0.05);
           border: 1px solid rgba(255, 255, 255, 0.1);
           color: var(--text-muted);
@@ -2034,10 +2709,12 @@ const RevofifPage = () => {
           flex-direction: column;
           gap: 2px;
           padding: 8px 0;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        .hst-item:last-child { border-bottom: none; }
+        .hst-item:last-child {
+          border-bottom: none;
+        }
 
         .hst-left {
           display: flex;
@@ -2049,7 +2726,7 @@ const RevofifPage = () => {
           font-size: 10px;
           font-family: monospace;
           color: var(--primary-accent);
-          background: rgba(0,158,217,0.1);
+          background: rgba(0, 158, 217, 0.1);
           padding: 2px 6px;
           border-radius: 3px;
           white-space: nowrap;
@@ -2077,16 +2754,30 @@ const RevofifPage = () => {
           margin-left: auto;
         }
 
-        .loading-row, .empty-row { text-align:center; padding:40px !important; color: var(--text-muted); }
+        .loading-row,
+        .empty-row {
+          text-align: center;
+          padding: 40px !important;
+          color: var(--text-muted);
+        }
 
         .cv-modal-overlay {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
-          display: flex; align-items: center; justify-content: center; z-index: 9999;
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
           padding: 40px;
         }
         .cv-modal-content {
-          width: 100%; max-width: 900px; height: 90vh;
-          display: flex; flex-direction: column;
+          width: 100%;
+          max-width: 900px;
+          height: 90vh;
+          display: flex;
+          flex-direction: column;
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
           background: var(--card-bg);
           border: 1px solid var(--border-color);
@@ -2094,26 +2785,54 @@ const RevofifPage = () => {
           overflow: hidden;
         }
         .cv-modal-header {
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 16px 24px; border-bottom: 1px solid var(--border-color);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 24px;
+          border-bottom: 1px solid var(--border-color);
           background: var(--glass-bg);
         }
-        .cv-modal-header h3 { font-size: 16px; font-weight: 600; margin: 0; color: var(--text-main); }
-        .cv-modal-actions { display: flex; align-items: center; gap: 12px; }
+        .cv-modal-header h3 {
+          font-size: 16px;
+          font-weight: 600;
+          margin: 0;
+          color: var(--text-main);
+        }
+        .cv-modal-actions {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
         .btn-close {
-          background: transparent; border: none; color: var(--text-muted);
-          cursor: pointer; display: flex; align-items: center; justify-content: center;
-          padding: 4px; border-radius: 6px; transition: all 0.2s;
+          background: transparent;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+          border-radius: 6px;
+          transition: all 0.2s;
         }
-        .btn-close:hover { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+        .btn-close:hover {
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+        }
         .cv-modal-body {
-          flex: 1; padding: 0; background: #e2e8f0;
+          flex: 1;
+          padding: 0;
+          background: #e2e8f0;
         }
-        :global(.dark) .cv-modal-body, :root[data-theme='light'] .cv-modal-body {
+        :global(.dark) .cv-modal-body,
+        :root[data-theme="light"] .cv-modal-body {
           background: #0f172a;
         }
         .cv-iframe {
-          width: 100%; height: 100%; border: none; display: block;
+          width: 100%;
+          height: 100%;
+          border: none;
+          display: block;
         }
 
         /* Pagination Styles */
@@ -2237,7 +2956,9 @@ const RevofifPage = () => {
           .title-group h2 {
             font-size: 20px;
           }
-          .btn-secondary, .btn-primary, .btn-reset {
+          .btn-secondary,
+          .btn-primary,
+          .btn-reset {
             padding: 8px 12px;
             font-size: 13px;
             flex: 1;
@@ -2286,19 +3007,25 @@ const RevofifPage = () => {
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
           animation: slideIn 0.3s ease-out;
         }
 
         @keyframes slideIn {
-          from { transform: translateY(20px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
+          from {
+            transform: translateY(20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
         }
 
         .chat-header {
           padding: 15px 20px;
-          background: rgba(255,255,255,0.03);
-          border-bottom: 1px solid rgba(255,255,255,0.05);
+          background: rgba(255, 255, 255, 0.03);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -2338,7 +3065,9 @@ const RevofifPage = () => {
           transition: background 0.2s;
         }
 
-        .back-btn:hover { background: rgba(255,255,255,0.1); }
+        .back-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
 
         /* User List Styles (for Superadmin) */
         .chat-user-list {
@@ -2354,11 +3083,13 @@ const RevofifPage = () => {
           align-items: center;
           gap: 15px;
           cursor: pointer;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
           transition: background 0.2s;
         }
 
-        .user-item:hover { background: rgba(255,255,255,0.03); }
+        .user-item:hover {
+          background: rgba(255, 255, 255, 0.03);
+        }
 
         .user-avatar {
           width: 40px;
@@ -2403,7 +3134,9 @@ const RevofifPage = () => {
           transition: background 0.2s;
         }
 
-        .chat-minimize:hover { background: rgba(255,255,255,0.05); }
+        .chat-minimize:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
 
         .chat-body {
           flex: 1;
@@ -2433,8 +3166,12 @@ const RevofifPage = () => {
           max-width: 80%;
         }
 
-        .chat-bubble-wrapper.own { align-self: flex-end; }
-        .chat-bubble-wrapper.other { align-self: flex-start; }
+        .chat-bubble-wrapper.own {
+          align-self: flex-end;
+        }
+        .chat-bubble-wrapper.other {
+          align-self: flex-start;
+        }
 
         .sender-name {
           font-size: 10px;
@@ -2457,22 +3194,22 @@ const RevofifPage = () => {
         }
 
         .other .chat-bubble {
-          background: rgba(255,255,255,0.08);
+          background: rgba(255, 255, 255, 0.08);
           color: var(--text-main);
           border-bottom-left-radius: 2px;
         }
 
         .chat-input-area {
           padding: 15px;
-          background: rgba(0,0,0,0.2);
+          background: rgba(0, 0, 0, 0.2);
           display: flex;
           gap: 10px;
         }
 
         .chat-input-area input {
           flex: 1;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 10px;
           padding: 10px 15px;
           color: white;
@@ -2480,7 +3217,9 @@ const RevofifPage = () => {
           outline: none;
         }
 
-        .chat-input-area input:focus { border-color: var(--primary-accent); }
+        .chat-input-area input:focus {
+          border-color: var(--primary-accent);
+        }
 
         .send-btn {
           background: var(--primary-accent);
@@ -2496,22 +3235,43 @@ const RevofifPage = () => {
           transition: transform 0.2s;
         }
 
-        .send-btn:hover { transform: scale(1.05); }
+        .send-btn:hover {
+          transform: scale(1.05);
+        }
 
         @media (max-width: 480px) {
-          .chat-widget { bottom: 20px; right: 20px; }
-          .chat-window { width: calc(100vw - 40px); height: 400px; }
+          .chat-widget {
+            bottom: 20px;
+            right: 20px;
+          }
+          .chat-window {
+            width: calc(100vw - 40px);
+            height: 400px;
+          }
         }
       `}</style>
       {/* Confirm Uncheck Modal */}
       {confirmModal && (
-        <div className="confirm-modal-overlay" onClick={() => setConfirmModal(null)}>
-          <div className="confirm-modal" onClick={e => e.stopPropagation()}>
+        <div
+          className="confirm-modal-overlay"
+          onClick={() => setConfirmModal(null)}
+        >
+          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Konfirmasi Pembatalan</h3>
-            <p>Apakah Anda yakin ingin membatalkan centang pada data kandidat ini? Data ini tidak akan muncul lagi di filter "Terpilih".</p>
+            <p>
+              Apakah Anda yakin ingin membatalkan centang pada data kandidat
+              ini? Data ini tidak akan muncul lagi di filter "Terpilih".
+            </p>
             <div className="confirm-modal-actions">
-              <button className="btn-cancel" onClick={() => setConfirmModal(null)}>Batal</button>
-              <button className="btn-confirm-delete" onClick={confirmUncheck}>Ya, Batalkan</button>
+              <button
+                className="btn-cancel"
+                onClick={() => setConfirmModal(null)}
+              >
+                Batal
+              </button>
+              <button className="btn-confirm-delete" onClick={confirmUncheck}>
+                Ya, Batalkan
+              </button>
             </div>
           </div>
         </div>
@@ -2519,16 +3279,32 @@ const RevofifPage = () => {
 
       {/* Confirm Delete History Modal */}
       {deleteHistoryId && (
-        <div className="confirm-modal-overlay" onClick={() => setDeleteHistoryId(null)}>
-          <div className="confirm-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-icon-header" style={{ marginBottom: '16px', textAlign: 'center' }}>
+        <div
+          className="confirm-modal-overlay"
+          onClick={() => setDeleteHistoryId(null)}
+        >
+          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="modal-icon-header"
+              style={{ marginBottom: "16px", textAlign: "center" }}
+            >
               <Trash2 size={40} color="#ff4d4d" />
             </div>
-            <h3 style={{ textAlign: 'center' }}>Hapus History Data</h3>
-            <p style={{ textAlign: 'center' }}>Apakah Anda yakin ingin menghapus seluruh history log aktivitas untuk data ini? Tindakan ini tidak dapat dibatalkan.</p>
+            <h3 style={{ textAlign: "center" }}>Hapus History Data</h3>
+            <p style={{ textAlign: "center" }}>
+              Apakah Anda yakin ingin menghapus seluruh history log aktivitas
+              untuk data ini? Tindakan ini tidak dapat dibatalkan.
+            </p>
             <div className="confirm-modal-actions">
-              <button className="btn-cancel" onClick={() => setDeleteHistoryId(null)}>Batal</button>
-              <button className="btn-confirm-delete" onClick={clearHistory}>Ya, Hapus History</button>
+              <button
+                className="btn-cancel"
+                onClick={() => setDeleteHistoryId(null)}
+              >
+                Batal
+              </button>
+              <button className="btn-confirm-delete" onClick={clearHistory}>
+                Ya, Hapus History
+              </button>
             </div>
           </div>
         </div>
@@ -2536,43 +3312,66 @@ const RevofifPage = () => {
 
       {/* Limit Update Modal */}
       {limitModal?.show && (
-        <div className="confirm-modal-overlay" onClick={() => setLimitModal(null)}>
-          <div className="confirm-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-icon-header" style={{ marginBottom: '16px', textAlign: 'center' }}>
+        <div
+          className="confirm-modal-overlay"
+          onClick={() => setLimitModal(null)}
+        >
+          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="modal-icon-header"
+              style={{ marginBottom: "16px", textAlign: "center" }}
+            >
               <AlertTriangle size={40} color="#f59e0b" />
             </div>
-            <h3 style={{ textAlign: 'center' }}>Batas Update Tercapai</h3>
-            <p style={{ textAlign: 'center' }}>{limitModal.message}</p>
-            <div className="confirm-modal-actions" style={{ justifyContent: 'center' }}>
-              <button className="btn-confirm-delete" style={{ background: '#f59e0b', borderColor: '#f59e0b' }} onClick={() => setLimitModal(null)}>Mengerti</button>
+            <h3 style={{ textAlign: "center" }}>Batas Update Tercapai</h3>
+            <p style={{ textAlign: "center" }}>{limitModal.message}</p>
+            <div
+              className="confirm-modal-actions"
+              style={{ justifyContent: "center" }}
+            >
+              <button
+                className="btn-confirm-delete"
+                style={{ background: "#f59e0b", borderColor: "#f59e0b" }}
+                onClick={() => setLimitModal(null)}
+              >
+                Mengerti
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* Floating Chat Widget */}
-      <div className={`chat-widget ${isChatOpen ? 'open' : 'closed'}`}>
+      <div className={`chat-widget ${isChatOpen ? "open" : "closed"}`}>
         {isChatOpen ? (
           <div className="chat-window">
             <div className="chat-header">
               <div className="header-info">
                 {isSuperAdmin && selectedChatUser && (
-                  <button className="back-btn" onClick={() => setSelectedChatUser(null)}>
+                  <button
+                    className="back-btn"
+                    onClick={() => setSelectedChatUser(null)}
+                  >
                     <ArrowLeft size={16} />
                   </button>
                 )}
                 <div className="status-dot"></div>
                 <span className="header-title">
-                  {isSuperAdmin 
-                    ? (selectedChatUser ? `Chat dengan ${selectedChatUser}` : 'Daftar Chat PIC') 
-                    : 'Chat dengan Superadmin'}
+                  {isSuperAdmin
+                    ? selectedChatUser
+                      ? `Chat dengan ${selectedChatUser}`
+                      : "Daftar Chat PIC"
+                    : "Chat dengan Superadmin"}
                 </span>
               </div>
-              <button className="chat-minimize" onClick={() => setIsChatOpen(false)}>
+              <button
+                className="chat-minimize"
+                onClick={() => setIsChatOpen(false)}
+              >
                 <Minimize2 size={18} />
               </button>
             </div>
-            
+
             {isSuperAdmin && !selectedChatUser ? (
               // SUPERADMIN USER LIST VIEW
               <div className="chat-user-list">
@@ -2583,13 +3382,23 @@ const RevofifPage = () => {
                   </div>
                 ) : (
                   chatUsers.map((u, i) => {
-                    const lastMsg = messages.filter(m => m.sender === u || m.receiver === u).pop();
+                    const lastMsg = messages
+                      .filter((m) => m.sender === u || m.receiver === u)
+                      .pop();
                     return (
-                      <div key={i} className="user-item" onClick={() => setSelectedChatUser(u)}>
-                        <div className="user-avatar">{u.charAt(0).toUpperCase()}</div>
+                      <div
+                        key={i}
+                        className="user-item"
+                        onClick={() => setSelectedChatUser(u)}
+                      >
+                        <div className="user-avatar">
+                          {u.charAt(0).toUpperCase()}
+                        </div>
                         <div className="user-info">
                           <div className="user-name">{u}</div>
-                          <div className="user-last-msg">{lastMsg?.content || '...'}</div>
+                          <div className="user-last-msg">
+                            {lastMsg?.content || "..."}
+                          </div>
                         </div>
                       </div>
                     );
@@ -2604,18 +3413,19 @@ const RevofifPage = () => {
                     <div className="chat-empty">
                       <MessageSquare size={32} />
                       <p>
-                        {isSuperAdmin 
-                          ? `Belum ada pesan dengan ${selectedChatUser}.` 
-                          : 'Halo! Ada yang bisa Superadmin bantu?'}
+                        {isSuperAdmin
+                          ? `Belum ada pesan dengan ${selectedChatUser}.`
+                          : "Halo! Ada yang bisa Superadmin bantu?"}
                       </p>
                     </div>
                   ) : (
                     filteredMessages.map((msg, i) => (
-                      <div key={i} className={`chat-bubble-wrapper ${msg.sender === (user?.username || 'Guest') ? 'own' : 'other'}`}>
+                      <div
+                        key={i}
+                        className={`chat-bubble-wrapper ${msg.sender === (user?.username || "Guest") ? "own" : "other"}`}
+                      >
                         <div className="sender-name">{msg.sender}</div>
-                        <div className="chat-bubble">
-                          {msg.content}
-                        </div>
+                        <div className="chat-bubble">{msg.content}</div>
                       </div>
                     ))
                   )}
@@ -2623,9 +3433,9 @@ const RevofifPage = () => {
                 </div>
 
                 <form className="chat-input-area" onSubmit={sendMessage}>
-                  <input 
-                    type="text" 
-                    placeholder="Tulis pesan..." 
+                  <input
+                    type="text"
+                    placeholder="Tulis pesan..."
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                   />
@@ -2637,7 +3447,10 @@ const RevofifPage = () => {
             )}
           </div>
         ) : (
-          <button className="chat-toggle-btn" onClick={() => setIsChatOpen(true)}>
+          <button
+            className="chat-toggle-btn"
+            onClick={() => setIsChatOpen(true)}
+          >
             <MessageSquare size={24} />
             <span className="toggle-label">Bantuan</span>
           </button>
