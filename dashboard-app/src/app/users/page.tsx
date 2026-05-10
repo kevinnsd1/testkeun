@@ -92,23 +92,48 @@ export default function UserManagementPage() {
     e.preventDefault();
     setLoading(true);
 
-    const payload = { ...formData };
-    
-    if (editingUser) {
-      const { error } = await supabase
-        .from('app_users')
-        .update(payload)
-        .eq('id', editingUser.id);
-      if (error) alert(error.message);
-    } else {
-      const { error } = await supabase
-        .from('app_users')
-        .insert([payload]);
-      if (error) alert(error.message);
-    }
+    try {
+      // 1. Username validation for new users
+      if (!editingUser) {
+        const { data: existing, error: checkError } = await supabase
+          .from('app_users')
+          .select('username')
+          .eq('username', formData.username.trim())
+          .maybeSingle();
+        
+        if (checkError) throw checkError;
+        if (existing) {
+          alert(`Username '@${formData.username}' sudah terdaftar. Gunakan username lain.`);
+          setLoading(false);
+          return;
+        }
+      }
 
-    setModalOpen(false);
-    fetchUsers();
+      const payload = { 
+        ...formData,
+        username: formData.username.trim()
+      };
+      
+      if (editingUser) {
+        const { error } = await supabase
+          .from('app_users')
+          .update(payload)
+          .eq('id', editingUser.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('app_users')
+          .insert([payload]);
+        if (error) throw error;
+      }
+
+      setModalOpen(false);
+      fetchUsers();
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteUser = async (id: string) => {

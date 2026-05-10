@@ -29,53 +29,27 @@ import {
   Send,
   Minimize2,
   ArrowLeft,
+  Database,
 } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 
 const getProvince = (row: any, activeTable: string): string => {
-  if (activeTable === "FLK_Onsite" || activeTable === "FLK_Recruitment") {
-    return row.provinsi_minat_penempatan || row.minat_penempatan || "";
-  }
   return (
     row.provinsi_domisili ||
     row.provinsi_dom ||
-    row.provinsi_minat_penempatan ||
-    row.minat_penempatan ||
+    row.provinsi ||
     ""
   );
 };
 
 const getKota = (row: any, activeTable: string): string => {
-  switch (activeTable) {
-    case "FLK_ADIRA":
-      return row.kecamatan || "";
-    case "FLK_BI":
-      return row.kecamatan || "";
-    case "FLK_HC":
-      return row.kecamatan || "";
-    case "FLK_Jateng_CC":
-      return row.minat_kota_penempatan || "";
-    case "FLK_Lookerin":
-      return row.kecamatan || "";
-    case "FLK_MRM":
-      return row.kecamatan || "";
-    case "FLK_Midea":
-      return row.kecamatan || "";
-    case "FLK_Nasional":
-      return row.kecamatan_domisili || "";
-    case "FLK_Onsite":
-      return row.kecamatan || "";
-    case "FLK_Pertanian":
-      return "";
-    case "FLK_REVOFIF":
-      return row.kecamatan || "";
-    case "FLK_Recruitment":
-      return row.kota_minat_penempatan || "";
-    case "FLK_Revoadira":
-      return row.kecamatan || "";
-    default:
-      return row.kecamatan || row.kota || "";
-  }
+  return (
+    row.kecamatan_domisili ||
+    row.kecamatan ||
+    row.kota ||
+    row.kabupaten ||
+    ""
+  );
 };
 
 // Tables that store dates in DD/MM/YYYY (Indonesian format)
@@ -146,11 +120,23 @@ const getRowDate = (row: any, table: string): string | null =>
 
 const getDateColumn = (table: string): string => {
   if (table === "FLK_Nasional") return "tanggal_daftar";
-  if (table === "FLK_Recruitment") return "tgl_lamar";
-  if (table === "FLK_Pertanian") return "tanggal_lamar";
-  if (table === "FLK_Jateng_CC" || table === "FLK_JATENG-CC")
-    return "tgl_lamar";
   return "timestamp";
+};
+
+const getProvinceColumns = (table: string): string[] => {
+  return ["provinsi_domisili", "provinsi_dom", "provinsi"];
+};
+
+const getKotaColumns = (table: string): string[] => {
+  return ["kecamatan_domisili", "kecamatan", "kota", "kabupaten"];
+};
+
+const getStatsColumns = (table: string): string => {
+  const cols = ["sumber_informasi", "durasi_pengalaman_kerja", "memiliki_pengalaman_kerja"];
+  if (table === "FLK_Nasional") cols.push("minat_posisi_1");
+  else if (table === "FLK_Onsite") cols.push("minat_posisi_1");
+  else cols.push("minat_posisi_1", "minat_pekerjaan");
+  return cols.join(", ");
 };
 
 const parseToDate = (str: any): Date => {
@@ -198,6 +184,7 @@ const RevofifPage = () => {
   const {
     filters,
     setFilters,
+    filterOptions,
     setFilterOptions,
     activeTable,
     user,
@@ -211,6 +198,14 @@ const RevofifPage = () => {
     message: string;
   } | null>(null);
   const [showNoSelectionModal, setShowNoSelectionModal] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
+  const [statsSample, setStatsSample] = useState<any[]>([]);
+  const [filteredStats, setFilteredStats] = useState<any>(null);
+  const [detailModal, setDetailModal] = useState<{
+    type: "sources" | "positions";
+    title: string;
+    data: { name: string; count: number }[];
+  } | null>(null);
 
   // --- CHAT FEATURE STATES (PRIVATE) ---
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -328,6 +323,7 @@ const RevofifPage = () => {
     }
   };
 
+
   const confirmUncheck = () => {
     if (confirmModal) {
       const newSelected = new Set(selectedIds);
@@ -371,161 +367,140 @@ const RevofifPage = () => {
   const fetchDashboardData = async (page = 1, perPage = itemsPerPage) => {
     const gen = ++fetchGenRef.current;
     setLoading(true);
-    if (page === 1) {
-      setGlobalStats(null);
-      setTotalRecords(0);
-      setTableTotal(0);
-    }
 
     const targetTable = activeTable;
     const dateCol = getDateColumn(targetTable);
 
+    // Fetch cascading filter options based on current filter state
+    supabase.rpc("get_cascading_filter_options", {
+      p_table_name: targetTable,
+      p_provinsi: filters.provinsi || null,
+      p_kota: filters.kota || null,
+      p_pendidikan: filters.pendidikan || null,
+      p_pengalaman: filters.pengalaman || null,
+      p_jenis_kelamin: filters.jenisKelamin || null,
+      p_minat_posisi: filters.minatPosisi || null
+    }).then(({ data: opts, error }) => {
+      if (!error && opts) {
+        setFilterOptions({
+          provinsis: opts.provinsis || [],
+          kotas: opts.kotas || [],
+          pendidikans: opts.pendidikans || [],
+          pengalamans: opts.pengalamans || [],
+          jenisKelamins: opts.jenis_kelamins || [],
+          minatPosis: opts.minat_posisi || [],
+          periodeKeys: []
+        });
+      }
+    });
+
+    // Reset stats immediately on first page to prevent data leakage from previous table/filters
+    if (page === 1) {
+      setIsSearching(true);
+      setFilteredStats(null);
+    }
+
     try {
-      // 1. Build base filter query (shared for both count and data)
-      const buildQuery = (
-        select: string,
-        opts?: { count?: "exact" | "planned" | "estimated" },
-      ) => {
-        let q = supabase.from(targetTable).select(select, opts || {});
-
-        // Date filter
-        if (filters.startDate) {
-          if (dateCol === "tanggal_daftar") {
-            const start = filters.startDate;
-            const end = filters.endDate || filters.startDate;
-            q = q
-              .gte("tanggal_daftar", `${start}T00:00:00Z`)
-              .lte("tanggal_daftar", `${end}T23:59:59Z`);
-          } else {
-            const [y, m] = filters.startDate.split("-");
-            const monthNum = parseInt(m, 10).toString();
-            q = q.or(
-              `${dateCol}.ilike.${monthNum}/%/${y},${dateCol}.ilike.${y}-${m}-%`,
-            );
-          }
-        }
-
-        // Search (text search on minat_posisi_1)
-        if (debouncedSearchTerm.trim()) {
-          const isSpecialTable = SPECIAL_TABLES.includes(targetTable);
-          const searchColumn = isSpecialTable
-            ? "minat_pekerjaan"
-            : "minat_posisi_1";
-          const formattedSearch = debouncedSearchTerm
-            .trim()
-            .split(/\s+/)
-            .map((t) => `'${t}:*'`)
-            .join(" | ");
-          q = q.textSearch(searchColumn, formattedSearch);
-        }
-
-        // Other filters
-        if (filters.provinsi) {
-          q = q.or(
-            `provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`,
-          );
-        }
-        if (filters.kota) {
-          q = q.or(
-            `kecamatan.eq."${filters.kota}",kecamatan_domisili.eq."${filters.kota}",kota_minat_penempatan.eq."${filters.kota}",minat_kota_penempatan.eq."${filters.kota}"`,
-          );
-        }
-        if (filters.pengalaman) {
-          q = q.or(
-            `durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`,
-          );
-        }
-        if (filters.pendidikan) {
-          q = q.eq("pendidikan_terakhir", filters.pendidikan);
-        }
-        if (filters.jenisKelamin) {
-          q = q.eq("jenis_kelamin", filters.jenisKelamin);
-        }
-        if (filters.minatPosisi) {
-          q = q.or(
-            `minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`,
-          );
-        }
-        if (cvFilter === "with") {
-          if (targetTable === "FLK_Nasional")
-            q = q.or("upload_cv.neq.null,file_url.neq.null");
-          else q = q.not("upload_cv", "is", null);
-        }
-        if (cvFilter === "without") {
-          if (targetTable === "FLK_Nasional")
-            q = q.is("upload_cv", null).is("file_url", null);
-          else q = q.is("upload_cv", null);
-        }
-        if (filters.showSelectedOnly && selectedIds.size > 0) {
-          q = q.in("id", Array.from(selectedIds) as string[]);
-        }
-
-        return q;
-      };
-
-      // 2. Paginated data query
+      // 1. Fetch Paginated Data using the new accurate RPC
       const from = (page - 1) * perPage;
-      const to = from + perPage - 1;
-      const {
-        data: result,
-        error,
-        count,
-      } = await buildQuery("*", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range(from, to);
+      const { data: result, error: dataError } = await supabase.rpc("get_filtered_rows", {
+        p_table_name: targetTable,
+        p_date_col: dateCol,
+        p_start_date: filters.startDate || null,
+        p_end_date: filters.endDate || null,
+        p_provinsi: filters.provinsi || null,
+        p_kota: filters.kota || null,
+        p_pengalaman: filters.pengalaman || null,
+        p_pendidikan: filters.pendidikan || null,
+        p_jenis_kelamin: filters.jenisKelamin || null,
+        p_minat_posisi: filters.minatPosisi || null,
+        p_search_term: debouncedSearchTerm.trim() || null,
+        p_cv_filter: cvFilter,
+        p_limit: perPage,
+        p_offset: from
+      });
 
-      if (error) throw error;
+      if (dataError) throw dataError;
       if (gen !== fetchGenRef.current) return;
 
       setData(result || []);
-      setTableTotal(count || 0);
       setLastRefresh(new Date());
 
-      // 3. Stats fetch (only on first page load / filter change, not on page change)
+      // 2. Fetch Stats only on first page or filter change
       if (page === 1) {
-        const statsPromise = supabase.rpc("get_flk_stats", {
-          table_name: targetTable,
+        const commonParams = {
+          p_table_name: targetTable,
+          p_date_col: dateCol,
+          p_start_date: filters.startDate || null,
+          p_end_date: filters.endDate || null,
+          p_provinsi: filters.provinsi || null,
+          p_kota: filters.kota || null,
+        };
+
+        const advancedCountsPromise = supabase.rpc("get_advanced_stats_counts", {
+          ...commonParams,
+          p_pengalaman: filters.pengalaman || null,
+          p_pendidikan: filters.pendidikan || null,
+          p_jenis_kelamin: filters.jenisKelamin || null,
+          p_minat_posisi: filters.minatPosisi || null,
+          p_search_term: debouncedSearchTerm.trim() || null,
+          p_cv_filter: cvFilter
         });
-        const lCountPromise = supabase
-          .from(targetTable)
-          .select("id", { count: "exact", head: true })
-          .eq("jenis_kelamin", "L");
-        const pCountPromise = supabase
-          .from(targetTable)
-          .select("id", { count: "exact", head: true })
-          .eq("jenis_kelamin", "P");
-        // Total records = unfiltered count
+
+        const topSourcesPromise = supabase.rpc("get_advanced_stats_top", {
+          ...commonParams,
+          p_type: 'sources'
+        });
+
+        const topPositionsPromise = supabase.rpc("get_advanced_stats_top", {
+          ...commonParams,
+          p_type: 'positions'
+        });
+
         const totalCountPromise = supabase
           .from(targetTable)
           .select("id", { count: "exact", head: true });
 
         const [
-          { data: stats, error: statsError },
-          { count: lCount },
-          { count: pCount },
-          { count: totalCount },
+          { data: advCounts, error: countError },
+          { data: topSources, error: sourceError },
+          { data: topPositions, error: posError },
+          { count: totalCount }
         ] = await Promise.all([
-          statsPromise,
-          lCountPromise,
-          pCountPromise,
-          totalCountPromise,
+          advancedCountsPromise,
+          topSourcesPromise,
+          topPositionsPromise,
+          totalCountPromise
         ]);
 
         if (gen !== fetchGenRef.current) return;
+        if (countError) console.error("Stats counts error:", countError.message || countError);
+        if (sourceError) console.error("Top sources error:", sourceError.message || sourceError);
+        if (posError) console.error("Top positions error:", posError.message || posError);
 
         setTotalRecords(totalCount || 0);
 
-        if (!statsError && stats) {
-          if (lCount) stats.male += lCount;
-          if (pCount) stats.female += pCount;
-          setGlobalStats(stats);
+        if (advCounts) {
+          setFilteredStats({
+            maleCount: advCounts.male_count || 0,
+            femaleCount: advCounts.female_count || 0,
+            freshCount: advCounts.fresh_count || 0,
+            expCount: (advCounts.total_count || 0) - (advCounts.fresh_count || 0),
+            totalCount: advCounts.total_count || 0,
+            sources: advCounts.total_count > 0 ? (topSources || []) : [],
+            positions: advCounts.total_count > 0 ? (topPositions || []) : []
+          });
+          setTableTotal(advCounts.total_count || 0);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       if (gen !== fetchGenRef.current) return;
-      console.error("Error fetching data:", err);
+      console.error("Error fetching data:", err.message || err);
     } finally {
-      if (gen === fetchGenRef.current) setLoading(false);
+      if (gen === fetchGenRef.current) {
+        setLoading(false);
+        setIsSearching(false);
+      }
     }
   };
 
@@ -538,6 +513,12 @@ const RevofifPage = () => {
 
   // ─── Effects ─────────────────────────────────────────────────────────────────
   useEffect(() => {
+    // Immediate cleanup to prevent UI showing old data
+    setData([]);
+    setFilteredStats(null);
+    setTableTotal(0);
+    setTotalRecords(0);
+    
     setFilters({
       startDate: "",
       endDate: "",
@@ -550,7 +531,6 @@ const RevofifPage = () => {
       showSelectedOnly: false,
     });
     setCurrentPage(1);
-    setTableTotal(0);
   }, [activeTable]);
 
   // Trigger fetch whenever page, filters, search term, or cvFilter changes
@@ -577,111 +557,10 @@ const RevofifPage = () => {
     executeSearch(debouncedSearchTerm);
   }, [debouncedSearchTerm]);
 
-  const localFilterOptions = useMemo(() => {
-    const getFilteredFor = (excludedKey: string) => {
-      return data.filter((row) => {
-        const rowDate = parseRowDate(getTimestamp(row, activeTable));
-        if (
-          excludedKey !== "date" &&
-          filters.startDate &&
-          rowDate &&
-          (rowDate < filters.startDate ||
-            rowDate > (filters.endDate || filters.startDate))
-        )
-          return false;
-        if (
-          excludedKey !== "provinsi" &&
-          filters.provinsi &&
-          getProvince(row, activeTable) !== filters.provinsi
-        )
-          return false;
-        if (
-          excludedKey !== "pengalaman" &&
-          filters.pengalaman &&
-          (row.durasi_pengalaman_kerja || row.memiliki_pengalaman_kerja) !==
-            filters.pengalaman
-        )
-          return false;
-        if (
-          excludedKey !== "pendidikan" &&
-          filters.pendidikan &&
-          row.pendidikan_terakhir !== filters.pendidikan
-        )
-          return false;
-        if (
-          excludedKey !== "jenisKelamin" &&
-          filters.jenisKelamin &&
-          row.jenis_kelamin !== filters.jenisKelamin
-        )
-          return false;
-        if (
-          excludedKey !== "minatPosisi" &&
-          filters.minatPosisi &&
-          (row.minat_posisi_1 || row.minat_pekerjaan) !== filters.minatPosisi
-        )
-          return false;
-        if (
-          excludedKey !== "kota" &&
-          filters.kota &&
-          getKota(row, activeTable) !== filters.kota
-        )
-          return false;
-        return true;
-      });
-    };
-
-    return {
-      periodeKeys: [], // No longer used as a dropdown list
-      provinsis: [
-        ...new Set(
-          getFilteredFor("provinsi")
-            .map((d) => getProvince(d, activeTable))
-            .filter(Boolean),
-        ),
-      ].sort() as string[],
-      pengalamans: [
-        ...new Set(
-          getFilteredFor("pengalaman")
-            .map(
-              (d) => d.durasi_pengalaman_kerja || d.memiliki_pengalaman_kerja,
-            )
-            .filter(Boolean),
-        ),
-      ].sort() as string[],
-      pendidikans: [
-        ...new Set(
-          getFilteredFor("pendidikan")
-            .map((d) => d.pendidikan_terakhir)
-            .filter(Boolean),
-        ),
-      ].sort() as string[],
-      jenisKelamins: [
-        ...new Set(
-          getFilteredFor("jenisKelamin")
-            .map((d) => d.jenis_kelamin)
-            .filter(Boolean),
-        ),
-      ].sort() as string[],
-      minatPosis: [
-        ...new Set(
-          getFilteredFor("minatPosisi")
-            .map((d) => d.minat_posisi_1 || d.minat_pekerjaan)
-            .filter(Boolean),
-        ),
-      ].sort() as string[],
-      kotas: [
-        ...new Set(
-          getFilteredFor("kota")
-            .map((d) => getKota(d, activeTable))
-            .filter(Boolean),
-        ),
-      ].sort() as string[],
-    };
-  }, [data, filters, activeTable]);
 
   useEffect(() => {
-    setFilterOptions(localFilterOptions);
-  }, [localFilterOptions, setFilterOptions]);
+    // We now fetch options directly inside fetchDashboardData to keep them synced
+  }, [filterOptions]);
 
   // 1. Dashboard Filtered Data (For Scoreboards & Stats)
   const dashboardFilteredData = useMemo(
@@ -740,17 +619,20 @@ const RevofifPage = () => {
     [data, filters, cvFilter, activeTable, selectedIds],
   );
 
-  // 2. Table data is now whatever came from the server (no client-side filtering needed)
-  const tableFilteredData = data; // already filtered & paginated server-side
-
   const hasActiveFilter = useMemo(() => {
-    const entries = Object.entries(filters);
-    const hasMainFilters = entries.some(([key, val]) => {
-      if (typeof val === "boolean") return val === true;
-      return val !== "";
-    });
-    return (
-      hasMainFilters || cvFilter !== "all" || debouncedSearchTerm.trim() !== ""
+    const { startDate, endDate, provinsi, kota, pengalaman, pendidikan, jenisKelamin, minatPosisi, showSelectedOnly } = filters;
+    return !!(
+      startDate || 
+      endDate || 
+      provinsi || 
+      kota || 
+      pengalaman || 
+      pendidikan || 
+      jenisKelamin || 
+      minatPosisi || 
+      showSelectedOnly ||
+      debouncedSearchTerm.trim() !== "" ||
+      cvFilter !== "all"
     );
   }, [filters, cvFilter, debouncedSearchTerm]);
 
@@ -762,26 +644,19 @@ const RevofifPage = () => {
   }, [tableTotal, hasActiveFilter, globalStats, activeTable]);
 
   const genderStats = useMemo(() => {
-    const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
-    if (!hasActiveFilter && globalStats && !isSpecialTable) {
-      return { male: globalStats.male || 0, female: globalStats.female || 0 };
+    if (filteredStats) {
+      return { 
+        male: filteredStats.maleCount, 
+        female: filteredStats.femaleCount 
+      };
     }
 
-    let male = 0;
-    let female = 0;
-
-    dashboardFilteredData.forEach((d) => {
-      const jk = (d.jenis_kelamin || "").toLowerCase();
-      // Use mutually exclusive logic to prevent double counting
-      if (jk === "l" || (jk.includes("laki") && !jk.includes("perempuan"))) {
-        male++;
-      } else if (jk === "p" || jk.includes("perempuan")) {
-        female++;
-      }
-    });
-
-    return { male, female };
-  }, [dashboardFilteredData, hasActiveFilter, globalStats, activeTable]);
+    if (!hasActiveFilter && globalStats) {
+      return { male: globalStats.male || 0, female: globalStats.female || 0 };
+    }
+    
+    return { male: 0, female: 0 };
+  }, [hasActiveFilter, globalStats, filteredStats]);
 
   const maleCount = genderStats.male;
   const femaleCount = genderStats.female;
@@ -790,66 +665,59 @@ const RevofifPage = () => {
   const totalPages = Math.ceil(tableTotal / itemsPerPage);
   const paginatedData = data; // current page data already from server
 
-  const insights = useMemo(() => {
-    const isSpecialTable = SPECIAL_TABLES.includes(activeTable);
-    // Use global stats if no filters active
-    if (!hasActiveFilter && globalStats && !isSpecialTable) {
-      // Group global top sources/positions to handle casing issues
-      const groupGlobalItems = (items: any[]) => {
-        const grouped = items.reduce((acc: any, curr: any) => {
-          const name = (curr.name || "").toUpperCase().trim();
-          acc[name] = (acc[name] || 0) + curr.count;
-          return acc;
-        }, {});
-        return Object.entries(grouped).sort((a: any, b: any) => b[1] - a[1]);
-      };
+  const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
+  const handleSelectAll = () => {
+    const pageIds = paginatedData.map(r => r.id || r.ID).filter(Boolean);
+    if (pageIds.length === 0) return;
+    
+    const allSelected = pageIds.every(id => selectedIds.has(id));
+    const newSelected = new Set(selectedIds);
+    
+    if (allSelected) {
+      pageIds.forEach(id => newSelected.delete(id));
+    } else {
+      pageIds.forEach(id => newSelected.add(id));
+    }
+    setSelectedIds(newSelected);
+  };
+
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      const pageIds = paginatedData.map(r => r.id || r.ID).filter(Boolean);
+      if (pageIds.length === 0) {
+        headerCheckboxRef.current.checked = false;
+        headerCheckboxRef.current.indeterminate = false;
+        return;
+      }
+      const selectedOnPage = pageIds.filter(id => selectedIds.has(id));
+      const allSelected = selectedOnPage.length === pageIds.length;
+      const noneSelected = selectedOnPage.length === 0;
+
+      headerCheckboxRef.current.checked = allSelected;
+      headerCheckboxRef.current.indeterminate = !allSelected && !noneSelected;
+    }
+  }, [paginatedData, selectedIds]);
+
+  const insights = useMemo(() => {
+    // Use accurate server-side stats if available
+    if (filteredStats) {
       return {
-        topSources: groupGlobalItems(globalStats.top_sources || []),
-        topPositions: groupGlobalItems(globalStats.top_positions || []),
-        freshGrads: globalStats.fresh || 0,
-        expCount: (globalStats.total || 0) - (globalStats.fresh || 0),
+        topSources: (filteredStats.sources || []).map((s: any) => [s.name, s.count]),
+        topPositions: (filteredStats.positions || []).map((s: any) => [s.name, s.count]),
+        freshGrads: filteredStats.freshCount,
+        expCount: filteredStats.expCount,
       };
     }
 
-    if (dashboardFilteredData.length === 0)
-      return {
-        topSources: [],
-        topPositions: [],
-        freshGrads: 0,
-        expCount: 0,
-      };
+    if (filteredStats) return filteredStats;
 
-    const getTopItems = (arr: string[], limit = 3) => {
-      const counts = arr.reduce((acc: any, curr) => {
-        const normalized = curr.toUpperCase().trim();
-        acc[normalized] = (acc[normalized] || 0) + 1;
-        return acc;
-      }, {});
-      return Object.entries(counts)
-        .sort((a: any, b: any) => b[1] - a[1])
-        .slice(0, limit);
-    };
-
-    const sources = dashboardFilteredData
-      .map((d) => d.sumber_informasi)
-      .filter(Boolean);
-    const topSources = getTopItems(sources);
-
-    const positions = dashboardFilteredData
-      .map((d) => d.minat_posisi_1 || d.minat_pekerjaan)
-      .filter(Boolean);
-    const topPositions = getTopItems(positions);
-
-    const freshGrads = dashboardFilteredData.filter((d) =>
-      d.durasi_pengalaman_kerja?.toLowerCase().includes("fresh"),
-    ).length;
-    const expCount = dashboardFilteredData.length - freshGrads;
-
-    return { topSources, topPositions, freshGrads, expCount };
-  }, [dashboardFilteredData, hasActiveFilter, globalStats]);
+    return { topSources: [], topPositions: [], freshGrads: 0, expCount: 0, totalCount: 0, maleCount: 0, femaleCount: 0 };
+  }, [filteredStats]);
 
   const resetFilters = () => {
+    setFilteredStats(null);
+    setStatsSample([]);
     setFilters({
       startDate: "",
       endDate: "",
@@ -870,96 +738,81 @@ const RevofifPage = () => {
     setExportProgress(0);
 
     try {
-      let exportData: any[];
+      let exportData: any[] = [];
+      const pageSize = 2000;
+      let from = 0;
 
-      if (searchResults !== null) {
-        // Search mode: export filtered search results already in memory
-        exportData = tableFilteredData;
-      } else {
-        // Normal mode: paginate all matching rows from Supabase
-        exportData = [];
-        let from = 0;
-        const pageSize = 1000;
+      // Determine total rows matching filters first to show accurate progress
+      const targetTable = activeTable;
+      const dateCol = getDateColumn(targetTable);
 
-        while (true) {
-          let query = supabase
-            .from(activeTable)
-            .select("*")
-            .order("created_at", { ascending: false })
-            .range(from, from + pageSize - 1);
-
-          if (filters.startDate) {
-            // Kita saring secara client-side nanti untuk akurasi 100% dengan string M/D/YYYY
-            // tapi kita tetep bisa tambahin filter server-side kalau kolomnya native timestamp (created_at)
-            query = query.gte("created_at", `${filters.startDate}T00:00:00`);
-            if (filters.endDate) {
-              query = query.lte("created_at", `${filters.endDate}T23:59:59`);
-            }
+      const buildBaseQuery = () => {
+        let q = supabase.from(targetTable).select("*", { count: "exact" });
+        if (filters.startDate) {
+          if (dateCol === "tanggal_daftar") {
+            const start = filters.startDate;
+            const end = filters.endDate || filters.startDate;
+            q = q.gte("tanggal_daftar", `${start}T00:00:00Z`).lte("tanggal_daftar", `${end}T23:59:59Z`);
+          } else {
+            const [y, m] = filters.startDate.split("-");
+            const monthNum = parseInt(m, 10).toString();
+            q = q.or(`${dateCol}.ilike.${monthNum}/%/${y},${dateCol}.ilike.${y}-${m}-%`);
           }
-          if (filters.provinsi) {
-            query = query.or(
-              `provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`,
-            );
-          }
-          if (filters.pengalaman) {
-            query = query.or(
-              `durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`,
-            );
-          }
-          if (filters.pendidikan) {
-            query = query.eq("pendidikan_terakhir", filters.pendidikan);
-          }
-          if (filters.jenisKelamin) {
-            query = query.eq("jenis_kelamin", filters.jenisKelamin);
-          }
-          if (filters.minatPosisi) {
-            query = query.or(
-              `minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`,
-            );
-          }
-
-          const { data: pageData, error } = await query;
-          if (error) throw error;
-          if (!pageData || pageData.length === 0) break;
-
-          exportData = [...exportData, ...pageData];
-          setExportProgress(exportData.length);
-          if (pageData.length < pageSize) break;
-          from += pageSize;
         }
-      }
+        if (filters.provinsi) {
+          q = q.or(`provinsi_domisili.eq."${filters.provinsi}",provinsi_dom.eq."${filters.provinsi}",provinsi_minat_penempatan.eq."${filters.provinsi}",minat_penempatan.eq."${filters.provinsi}"`);
+        }
+        if (filters.pengalaman) {
+          q = q.or(`durasi_pengalaman_kerja.eq."${filters.pengalaman}",memiliki_pengalaman_kerja.eq."${filters.pengalaman}"`);
+        }
+        if (filters.pendidikan) q = q.eq("pendidikan_terakhir", filters.pendidikan);
+        if (filters.jenisKelamin) q = q.eq("jenis_kelamin", filters.jenisKelamin);
+        if (filters.minatPosisi) {
+          q = q.or(`minat_posisi_1.eq."${filters.minatPosisi}",minat_pekerjaan.eq."${filters.minatPosisi}"`);
+        }
+        return q;
+      };
 
-      if (exportData.length === 0) {
+      const { count: totalToExport } = await buildBaseQuery().limit(0);
+      const targetTotal = totalToExport || 0;
+
+      if (targetTotal === 0) {
         alert("Tidak ada data untuk diekspor.");
         return;
       }
 
+      while (from < targetTotal) {
+        const to = Math.min(from + pageSize - 1, targetTotal - 1);
+        const { data: pageData, error } = await buildBaseQuery()
+          .order("created_at", { ascending: false })
+          .range(from, to);
+
+        if (error) throw error;
+        if (!pageData || pageData.length === 0) break;
+
+        exportData = [...exportData, ...pageData];
+        setExportProgress(Math.round((exportData.length / targetTotal) * 100));
+        
+        // Yield to main thread to prevent UI freeze and allow progress updates
+        await new Promise(resolve => setTimeout(resolve, 0));
+        
+        from += pageSize;
+      }
+
       const headers = [
-        "No",
-        "Tgl Lamar",
-        "Nama Lengkap",
-        "Email",
-        "No WA",
-        "No HP",
-        "Sumber Informasi",
-        "Tgl Lahir",
-        "Jenis Kelamin",
-        "Pengalaman Kerja",
-        "Durasi Pengalaman",
-        "Minat Posisi",
-        "Provinsi",
-        "Pendidikan",
-        "Sekolah/Kampus",
-        "Hasil Screening",
-        "Screening Time",
-        "Nomor Task",
-        "Link CV",
+        "No", "Tgl Lamar", "Nama Lengkap", "Email", "No WA", "No HP", "Sumber Informasi",
+        "Tgl Lahir", "Jenis Kelamin", "Pengalaman Kerja", "Durasi Pengalaman", "Minat Posisi",
+        "Provinsi", "Pendidikan", "Sekolah/Kampus", "Hasil Screening", "Screening Time",
+        "Nomor Task", "Link CV"
       ];
 
       const worksheetData: any[][] = [headers];
-      exportData.forEach((r, idx) => {
+      
+      // Process in smaller chunks for building worksheet to avoid long task
+      for (let i = 0; i < exportData.length; i++) {
+        const r = exportData[i];
         worksheetData.push([
-          idx + 1,
+          i + 1,
           formatDate(r.timestamp, true),
           r.nama_lengkap || "-",
           r.email_aktif || r.email || "-",
@@ -971,32 +824,27 @@ const RevofifPage = () => {
           r.pengalaman_kerja_terakhir || r.pengalaman_kerja || "-",
           r.durasi_pengalaman_kerja || r.memiliki_pengalaman_kerja || "-",
           r.minat_posisi_1 || r.minat_pekerjaan || "-",
-          r.provinsi_domisili ||
-            r.provinsi_dom ||
-            r.provinsi_minat_penempatan ||
-            r.minat_penempatan ||
-            "-",
+          r.provinsi_domisili || r.provinsi_dom || r.provinsi_minat_penempatan || r.minat_penempatan || "-",
           r.pendidikan_terakhir || "-",
           r.nama_sekolah || "-",
           r.hasil_screening || "-",
           formatDate(r.screening_time, true),
           r.nomor_task || "-",
-          (activeTable === "FLK_Nasional"
-            ? r.upload_cv || r.file_url
-            : r.upload_cv) || "-",
+          (activeTable === "FLK_Nasional" ? r.upload_cv || r.file_url : r.upload_cv) || "-"
         ]);
-      });
+        
+        // Yield every 5000 rows during conversion
+        if (i % 5000 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+      }
 
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Data Pelamar");
-      worksheet["!cols"] = headers.map((h) => ({
-        wch: Math.min(h.length + 5, 50),
-      }));
-      XLSX.writeFile(
-        workbook,
-        `FLK_Export_${activeTable}_${new Date().toISOString().slice(0, 10)}.xlsx`,
-      );
+      
+      // Auto-width adjustment (limited to headers for speed)
+      worksheet["!cols"] = headers.map(h => ({ wch: Math.min(h.length + 5, 30) }));
+      
+      XLSX.writeFile(workbook, `FLK_Export_${activeTable}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (err) {
       console.error("Error exporting data:", err);
       alert("Gagal mengekspor data. Silakan coba lagi.");
@@ -1407,6 +1255,21 @@ const RevofifPage = () => {
           </p>
         </div>
         <div className="action-group">
+          {selectedIds.size > 0 && (
+            <button 
+              className={`btn-secondary ${filters.showSelectedOnly ? 'active-filter' : ''}`}
+              onClick={() => setFilters(prev => ({ ...prev, showSelectedOnly: !prev.showSelectedOnly }))}
+              title={filters.showSelectedOnly ? "Tampilkan semua data" : "Hanya tampilkan data yang dicentang"}
+              style={{
+                borderColor: filters.showSelectedOnly ? 'var(--primary-accent)' : 'var(--border-color)',
+                background: filters.showSelectedOnly ? 'rgba(0, 158, 217, 0.1)' : 'var(--glass-bg)',
+                color: filters.showSelectedOnly ? 'var(--primary-accent)' : 'var(--text-main)',
+              }}
+            >
+              <Filter size={18} />
+              {filters.showSelectedOnly ? "Lihat Semua" : `Filter Terpilih (${selectedIds.size})`}
+            </button>
+          )}
           {hasActiveFilter && (
             <button className="btn-reset" onClick={resetFilters}>
               <X size={16} /> Reset Filter
@@ -1451,7 +1314,7 @@ const RevofifPage = () => {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid">
+      <div className={`stats-grid ${isSearching ? 'skeleton-pulse' : ''}`}>
         <div className="stat-card glass-card">
           <div className="stat-info">
             <div className="stat-header">
@@ -1525,10 +1388,7 @@ const RevofifPage = () => {
             <div className="stat-header">
               <span className="label">EXPERIENCE BREAKDOWN</span>
               <span className="total-badge">
-                {(insights.freshGrads + insights.expCount).toLocaleString(
-                  "id-ID",
-                )}{" "}
-                TOTAL
+                {total.toLocaleString("id-ID")} TOTAL
               </span>
             </div>
             <div className="gender-info">
@@ -1565,7 +1425,14 @@ const RevofifPage = () => {
           </div>
         </div>
 
-        <div className="stat-card glass-card">
+        <div 
+          className="stat-card glass-card clickable-card"
+          onClick={() => setDetailModal({
+            type: 'sources',
+            title: 'Full Source Breakdown',
+            data: filteredStats?.sources || []
+          })}
+        >
           <div className="stat-info">
             <div className="stat-header">
               <span className="label">TOP SOURCES</span>
@@ -1597,13 +1464,21 @@ const RevofifPage = () => {
                 <span className="value">-</span>
               )}
             </div>
+            <div className="click-hint">Klik untuk detail lengkap</div>
           </div>
           <div className="stat-icon pink">
             <Share2 size={20} />
           </div>
         </div>
 
-        <div className="stat-card glass-card">
+        <div 
+          className="stat-card glass-card clickable-card"
+          onClick={() => setDetailModal({
+            type: 'positions',
+            title: 'Full Position Breakdown',
+            data: filteredStats?.positions || []
+          })}
+        >
           <div className="stat-info">
             <div className="stat-header">
               <span className="label">TOP POSITIONS</span>
@@ -1635,12 +1510,57 @@ const RevofifPage = () => {
                 <span className="value">-</span>
               )}
             </div>
+            <div className="click-hint">Klik untuk detail lengkap</div>
           </div>
           <div className="stat-icon yellow">
             <Briefcase size={20} />
           </div>
         </div>
       </div>
+
+      {/* --- DETAIL MODAL --- */}
+      {detailModal && (
+        <div className="detail-modal-overlay" onClick={() => setDetailModal(null)}>
+          <div className="detail-modal-content glass-card" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="header-left">
+                <h3>{detailModal.title}</h3>
+                <p>{total.toLocaleString("id-ID")} Total Data Terfilter</p>
+              </div>
+              <button className="close-btn" onClick={() => setDetailModal(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="full-list">
+                {detailModal.data.map((item, i) => (
+                  <div key={item.name} className="list-item-full">
+                    <div className="item-rank">{i + 1}</div>
+                    <div className="item-main">
+                      <div className="item-name-row">
+                        <span className="name">{item.name}</span>
+                        <span className="count">{item.count.toLocaleString("id-ID")}</span>
+                      </div>
+                      <div className="item-bar-bg">
+                        <div 
+                          className={`item-bar-fill ${detailModal.type === 'sources' ? 'pink' : 'yellow'}`}
+                          style={{ width: `${total > 0 ? (item.count / total) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <span className="percentage">
+                        {total > 0 ? ((item.count / total) * 100).toFixed(1) : 0}% dari total
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {detailModal.data.length === 0 && (
+                  <div className="empty-modal">Tidak ada data untuk ditampilkan</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="table-search-header">
         <div className="search-container">
@@ -1696,16 +1616,11 @@ const RevofifPage = () => {
                 style={{ width: "45px", textAlign: "center" }}
               >
                 <input
+                  ref={headerCheckboxRef}
                   type="checkbox"
                   className="row-checkbox"
-                  title="Filter: Hanya tampilkan data yang dicentang"
-                  checked={!!filters.showSelectedOnly}
-                  onChange={() =>
-                    setFilters({
-                      ...filters,
-                      showSelectedOnly: !filters.showSelectedOnly,
-                    })
-                  }
+                  title="Pilih/Hapus semua di halaman ini"
+                  onChange={handleSelectAll}
                 />
               </th>
               <th className="sticky-col sticky-col-2" style={{ width: "45px" }}>
@@ -1736,24 +1651,36 @@ const RevofifPage = () => {
           <tbody>
             {loading || isSearching ? (
               <tr>
-                <td colSpan={16} className="loading-row">
-                  {isSearching ? "Mencari data..." : "Memuat data..."}
+                <td colSpan={17} className="loading-row">
+                  <div className="loader-container">
+                    <div className="loader-spinner"></div>
+                    <span>{isSearching ? "Mencari data..." : "Memuat data pelamar..."}</span>
+                  </div>
                 </td>
               </tr>
             ) : paginatedData.length === 0 ? (
               <tr>
-                <td colSpan={16} className="empty-row">
-                  Tidak ada data ditemukan
+                <td colSpan={17} className="empty-row">
+                  <div className="empty-state">
+                    <Database size={40} className="empty-icon" />
+                    <p>Tidak ada data ditemukan</p>
+                    <small>Coba sesuaikan filter atau kata kunci pencarian Anda</small>
+                  </div>
                 </td>
               </tr>
             ) : (
               paginatedData.map((row, idx) => {
                 const isSelected = selectedIds.has(row.id || row.ID);
                 return (
-                  <tr key={row.id || idx}>
+                  <tr 
+                    key={row.id || idx}
+                    onClick={() => setSelectedRecord(row)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <td
                       className="sticky-col sticky-col-1"
                       style={{ textAlign: "center" }}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <input
                         type="checkbox"
@@ -1852,7 +1779,7 @@ const RevofifPage = () => {
                         )}
                       </div>
                     </td>
-                    <td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <select
                         className={`screening-select ${row.hasil_screening?.toLowerCase() || ""}`}
                         value={row.hasil_screening || ""}
@@ -1879,7 +1806,7 @@ const RevofifPage = () => {
                     >
                       {formatDate(row.screening_time, true)}
                     </td>
-                    <td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <input
                         type="text"
                         className="task-input"
@@ -3665,6 +3592,21 @@ const RevofifPage = () => {
       )}
 
 
+      {isExporting && (
+        <div className="export-overlay">
+          <div className="export-card glass-card">
+            <Download className="spin" size={32} />
+            <div className="export-info">
+              <h3>Mengekspor Data...</h3>
+              <p>Mohon tunggu, sedang menyiapkan file Excel ({exportProgress}%)</p>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${exportProgress}%` }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating Chat Widget */}
       <div className={`chat-widget ${isChatOpen ? "open" : "closed"}`}>
         {isChatOpen ? (
@@ -3780,6 +3722,222 @@ const RevofifPage = () => {
           </button>
         )}
       </div>
+      {/* Detail Modal */}
+      {selectedRecord && (
+        <div className="modal-backdrop" onClick={() => setSelectedRecord(null)}>
+          <div className="modal-content detail-modal glass-card" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="header-left">
+                <div className="avatar-large">
+                  {selectedRecord.nama_lengkap?.charAt(0) || "U"}
+                </div>
+                <div>
+                  <h3>{selectedRecord.nama_lengkap || "Tanpa Nama"}</h3>
+                  <span className="badge-id">ID: {selectedRecord.id || selectedRecord.ID}</span>
+                </div>
+              </div>
+              <button className="close-modal" onClick={() => setSelectedRecord(null)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="detail-grid">
+                <div className="detail-section">
+                  <h4>Informasi Pribadi</h4>
+                  <div className="info-row">
+                    <span className="label">Email</span>
+                    <span className="value">{selectedRecord.email_aktif || selectedRecord.email || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">No WA / HP</span>
+                    <span className="value">{selectedRecord.no_wa || "-"} / {selectedRecord.no_hp || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">Jenis Kelamin</span>
+                    <span className="value">{selectedRecord.jenis_kelamin || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">Tgl Lahir</span>
+                    <span className="value">{formatDate(selectedRecord.tanggal_lahir)}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">Domisili</span>
+                    <span className="value">{selectedRecord.provinsi_domisili || selectedRecord.provinsi_dom || "-"}</span>
+                  </div>
+                </div>
+
+                <div className="detail-section">
+                  <h4>Pendidikan & Pengalaman</h4>
+                  <div className="info-row">
+                    <span className="label">Pendidikan</span>
+                    <span className="value">{selectedRecord.pendidikan_terakhir || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">Sekolah/Kampus</span>
+                    <span className="value">{selectedRecord.nama_sekolah || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">Pengalaman Terakhir</span>
+                    <span className="value">{selectedRecord.pengalaman_kerja_terakhir || selectedRecord.pengalaman_kerja || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">Durasi Pengalaman</span>
+                    <span className="value">{selectedRecord.durasi_pengalaman_kerja || selectedRecord.memiliki_pengalaman_kerja || "-"}</span>
+                  </div>
+                </div>
+
+                <div className="detail-section full-width">
+                  <h4>Minat & Informasi Sumber</h4>
+                  <div className="info-row">
+                    <span className="label">Minat Posisi</span>
+                    <span className="value highlight">{selectedRecord.minat_posisi_1 || selectedRecord.minat_pekerjaan || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">Minat Penempatan</span>
+                    <span className="value">{selectedRecord.provinsi_minat_penempatan || selectedRecord.minat_penempatan || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">Sumber Informasi</span>
+                    <span className="value">{selectedRecord.sumber_informasi || "-"}</span>
+                  </div>
+                  {selectedRecord.upload_cv && (
+                    <div className="info-row">
+                      <span className="label">Link CV</span>
+                      <a href={selectedRecord.upload_cv} target="_blank" rel="noopener noreferrer" className="cv-link">
+                        <ExternalLink size={14} /> Lihat CV Pelamar
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+               <button className="btn-secondary" onClick={() => setSelectedRecord(null)}>Tutup</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        .modal-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.2s ease-out;
+        }
+        .detail-modal {
+          width: 90%;
+          max-width: 700px;
+          max-height: 85vh;
+          overflow-y: auto;
+          border-radius: 20px;
+          display: flex;
+          flex-direction: column;
+          animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .modal-header {
+          padding: 24px;
+          border-bottom: 1px solid var(--border-color);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .avatar-large {
+          width: 56px;
+          height: 56px;
+          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          font-weight: 700;
+          color: white;
+        }
+        .badge-id { font-size: 11px; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px; }
+        .close-modal { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 8px; transition: all 0.2s; }
+        .close-modal:hover { background: rgba(255,255,255,0.05); color: white; }
+        
+        .modal-body { padding: 24px; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .detail-section.full-width { grid-column: span 2; }
+        .detail-section h4 { font-size: 13px; color: #3b82f6; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; font-weight: 700; }
+        .info-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+        .info-row .label { font-size: 11px; color: var(--text-muted); }
+        .info-row .value { font-size: 14px; color: var(--text-main); font-weight: 500; }
+        .info-row .value.highlight { color: #009ed9; font-weight: 700; }
+        .cv-link { display: flex; align-items: center; gap: 6px; color: #3b82f6; text-decoration: none; font-size: 14px; font-weight: 600; }
+        .cv-link:hover { text-decoration: underline; }
+        
+        .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        
+        @media (max-width: 640px) {
+          .detail-grid { grid-template-columns: 1fr; }
+          .detail-section.full-width { grid-column: span 1; }
+        }
+        .skeleton-pulse .stat-card {
+          animation: pulse-bg 1.5s infinite ease-in-out;
+        }
+        @keyframes pulse-bg {
+          0% { background: var(--glass-bg); }
+          50% { background: rgba(255, 255, 255, 0.08); }
+          100% { background: var(--glass-bg); }
+        }
+        
+        .loader-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          padding: 60px 0;
+        }
+        .loader-spinner {
+          width: 32px;
+          height: 32px;
+          border: 3px solid rgba(0, 158, 217, 0.1);
+          border-top-color: #009ed9;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+        .empty-state {
+          padding: 80px 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          color: var(--text-muted);
+        }
+        .empty-icon { opacity: 0.2; margin-bottom: 16px; }
+        .empty-state p { font-weight: 600; font-size: 16px; margin: 0; color: var(--text-main); }
+        .empty-state small { font-size: 13px; margin-top: 4px; }
+        
+        .progress-bar {
+          width: 100%;
+          height: 6px;
+          background: rgba(255,255,255,0.05);
+          border-radius: 3px;
+          margin-top: 12px;
+          overflow: hidden;
+        }
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #3b82f6, #009ed9);
+          transition: width 0.3s ease;
+        }
+      `}</style>
     </div>
   );
 };

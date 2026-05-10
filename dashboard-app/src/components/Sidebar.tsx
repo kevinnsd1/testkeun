@@ -139,7 +139,9 @@ const Sidebar = ({ isCollapsed, toggleCollapse, isMobileOpen, closeMobile }: { i
               <label><MapPin size={12} color="#8b5cf6" /> Kota / Kecamatan</label>
               <select value={filters.kota} onChange={(e) => handleFilterChange('kota', e.target.value)}>
                 <option value="">Semua Kota/Kec</option>
-                {filterOptions.kotas.map(k => <option key={k} value={k}>{k}</option>)}
+                {filterOptions.kotas.map(k => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
               </select>
             </div>
             <div className="filter-group">
@@ -263,8 +265,22 @@ const Sidebar = ({ isCollapsed, toggleCollapse, isMobileOpen, closeMobile }: { i
         .sidebar.collapsed .name,
         .sidebar.collapsed .soon-badge,
         .sidebar.collapsed .theme-toggle span,
-        .sidebar.collapsed .footer-item span {
-          display: none;
+        .sidebar.collapsed .footer-item span,
+        .sidebar.collapsed .user-info {
+          opacity: 0;
+          visibility: hidden;
+          max-width: 0;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+          white-space: nowrap;
+        }
+
+        .logo-text, .section-title, .name, .soon-badge, .theme-toggle span, .footer-item span, .user-info {
+          transition: opacity 0.2s ease, max-width 0.3s ease, visibility 0.2s;
+          opacity: 1;
+          visibility: visible;
+          max-width: 200px;
         }
 
         .sidebar.collapsed .nav-item {
